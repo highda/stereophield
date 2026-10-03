@@ -1,6 +1,7 @@
 #include "dsp/Velvet.h"
 
 #include "dsp/Rng.h"
+#include "dsp/VelvetTables.h"
 
 #include <algorithm>
 #include <cmath>
@@ -29,6 +30,38 @@ void Velvet::build (Sequence& seq, double sampleRate, float sizeMs, float densit
     seq.count = count;
 }
 
+void Velvet::buildOptimised (Sequence& seq, double sampleRate, float sizeMs, float density, int variation, int side) noexcept
+{
+    using namespace velvet_tables;
+    const int len = std::max (1, (int) std::lround (sizeMs * 0.001 * sampleRate));
+    const int wanted = std::clamp ((int) std::lround (density * sizeMs * 0.001), 8, maxImpulses);
+    int cls = 0, offset = 0, at = 0;
+    for (int c = 0; c < numClasses; ++c)
+    {
+        if (std::abs (classCounts[c] - wanted) < std::abs (classCounts[cls] - wanted))
+        {
+            cls = c;
+            offset = at;
+        }
+        at += classCounts[c];
+    }
+    const int count = classCounts[cls];
+    const uint16_t* d = data[std::clamp (variation, 0, 15)][side] + offset;
+    double energy = 0.0;
+    for (int j = 0; j < count; ++j)
+    {
+        const double frac = (d[j] >> 1) / 32768.0;
+        seq.pos[(size_t) j] = std::clamp ((int) std::lround (frac * len), 0, len - 1);
+        const double g = ((d[j] & 1) ? -1.0 : 1.0) * std::exp (-6.908 * j / count);
+        seq.gain[(size_t) j] = (float) g;
+        energy += g * g;
+    }
+    const float norm = (float) (1.0 / std::sqrt (energy));
+    for (int j = 0; j < count; ++j)
+        seq.gain[(size_t) j] *= norm;
+    seq.count = count;
+}
+
 void Velvet::prepare (const ProcessSpec& spec)
 {
     fs = spec.sampleRate;
@@ -44,14 +77,22 @@ void Velvet::reset()
 
 void Velvet::rebuild() noexcept
 {
-    build (seqL, fs, current.sizeMs, current.density, 1000u + 2u * (uint32_t) current.variation);
-    build (seqR, fs, current.sizeMs, current.density, 1001u + 2u * (uint32_t) current.variation);
+    if (current.design == VelvetDesign::Optimised)
+    {
+        buildOptimised (seqL, fs, current.sizeMs, current.density, current.variation, 0);
+        buildOptimised (seqR, fs, current.sizeMs, current.density, current.variation, 1);
+    }
+    else
+    {
+        build (seqL, fs, current.sizeMs, current.density, 1000u + 2u * (uint32_t) current.variation);
+        build (seqR, fs, current.sizeMs, current.density, 1001u + 2u * (uint32_t) current.variation);
+    }
     length = std::max (1, (int) std::lround (current.sizeMs * 0.001 * fs));
 }
 
 void Velvet::setParams (const Params& p, bool snap)
 {
-    wanted = { p.velvetSource, p.velvetSizeMs, p.velvetDensity, std::clamp (p.velvetVariation, 0, 15) };
+    wanted = { p.velvetSource, p.velvetSizeMs, p.velvetDensity, std::clamp (p.velvetVariation, 0, 15), p.velvetDesign };
     if (snap)
     {
         current = wanted;

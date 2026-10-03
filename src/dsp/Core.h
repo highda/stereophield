@@ -3,12 +3,14 @@
 #include "dsp/Analysis.h"
 #include "dsp/Buses.h"
 #include "dsp/DelayLine.h"
+#include "dsp/DoubleTracker.h"
 #include "dsp/HaasDelay.h"
 #include "dsp/Meters.h"
 #include "dsp/Mod.h"
 #include "dsp/OutputStage.h"
 #include "dsp/Params.h"
 #include "dsp/ProcessSpec.h"
+#include "dsp/RoomCues.h"
 #include "dsp/SideBus.h"
 #include "dsp/SleepController.h"
 #include "dsp/Spread.h"
@@ -67,10 +69,14 @@ public:
     const HaasDelay& haas() const noexcept { return haasGen; }
     const Mod& mod() const noexcept { return modGen; }
     const Velvet& velvet() const noexcept { return velvetGen; }
+    const DoubleTracker& doubler() const noexcept { return dblGen; }
+    const RoomCues& room() const noexcept { return roomGen; }
+    bool expanderActive() const noexcept { return expanderOn; }
     const SideBus& sideBus() const noexcept { return side; }
     const Analysis& analysis() const noexcept { return analyser; }
     const SleepController& analysisSleep() const noexcept { return analyserSleep; }
     const PanMap& panMap() const noexcept { return analyser.panMap(); }
+    const CoherenceDesigner& coherence() const noexcept { return analyser.coherence(); }
     const OutputStage& output() const noexcept { return out; }
     // Generators processed in the last block, as a bit mask over GeneratorId.
     unsigned lastAwakeMask() const noexcept { return awakeMask; }
@@ -109,12 +115,16 @@ private:
     HaasDelay haasGen;
     Mod modGen;
     Velvet velvetGen;
+    DoubleTracker dblGen;
+    RoomCues roomGen;
+    juce::SmoothedValue<float> expanderMix;
+    bool expanderOn = false;
     std::array<Slot, numGenerators> slots;
     SideBus side;
     SleepController sideSleep;
     OutputStage out;
 
-    std::vector<float> m, sIn, mD, sInD, e, tonal, noise, tonalNoise, panSide, panPost, sBus, dBus, sTmp, mTmp, sSyn, mOut, outTmpL, outTmpR;
+    std::vector<float> m, sIn, mD, sInD, e, tonal, noise, tonalNoise, panSide, panPost, cohSide, sExp, sBus, dBus, sTmp, mTmp, sSyn, mOut, outTmpL, outTmpR;
 
     std::atomic<double> tail { 0.0 };
     unsigned awakeMask = 0;

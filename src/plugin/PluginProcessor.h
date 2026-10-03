@@ -58,11 +58,14 @@ public:
 private:
     void handleAsyncUpdate() override;
     void completeState (juce::ValueTree& state, int version);
+    void restoreExactValues (const juce::ValueTree& saved);
 
     juce::AudioProcessorValueTreeState apvts;
     ParamReader reader;
     Core dsp;
     int currentProgram = 0;
+    // True while rendering a session saved by 1.0 (see ParamReader).
+    std::atomic<bool> legacyValues { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StereophieldProcessor)
 };

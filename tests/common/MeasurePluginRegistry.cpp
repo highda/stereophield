@@ -37,6 +37,11 @@ const std::vector<Entry>& registry()
         { "T27", t27Bypass },
         { "T28", t28InterfaceSnapshot },
         { "P2-T14", p2t14PerceivedWidth },
+        { "P2-T15", p2t15CoherenceTarget },
+        { "P2-T16", p2t16PhysicalCurves },
+        { "P2-T17", p2t17CoherenceSafe },
+        { "P2-T18", p2t18CoherenceCost },
+        { "P2-T25", p2t25OptimisedVelvet },
         { "P2-T36", p2t36PerceptualMetrics },
     };
     return entries;

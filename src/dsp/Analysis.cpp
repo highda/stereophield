@@ -15,6 +15,12 @@ void Analysis::prepare (double sampleRate)
     split.prepare (k);
     ambience.prepare (k, fs, stft.hopSize());
     pans.prepare (fs, n, stft.hopSize());
+    coh.prepare (fs, n, stft.hopSize());
+    stftD.prepare (n, n / 4, 0);
+    specD.assign ((size_t) k, {});
+    image.prepare (fs, n, stft.hopSize());
+    stftS.prepare (n, n / 4, 1);
+    specS.assign ((size_t) k, {});
     spec.assign ((size_t) k, {});
     bus.assign ((size_t) k, {});
     for (auto* v : { &mag, &mt, &mx, &mn, &ma })
@@ -31,8 +37,12 @@ void Analysis::reset()
 void Analysis::resetAll()
 {
     stft.reset();
+    stftD.reset();
+    stftS.reset();
+    image.reset();
     reset();
     pans.reset();
+    coh.reset();
     frames = 0;
 }
 
@@ -64,13 +74,32 @@ void Analysis::analyseFrame (const Needs& needs) noexcept
         pans.processFrame (spec.data(), mag.data(), mt.data(), mn.data(), bus.data());
         stft.synthesize (chPan, bus.data());
     }
+    if (needs.expander)
+    {
+        stftS.analyze (specS.data());
+        image.processFrame (spec.data(), specS.data(), bus.data());
+        stftS.synthesize (0, bus.data());
+    }
+    if (needs.coherence)
+    {
+        stftD.analyze (specD.data());
+        coh.processFrame (spec.data(), specD.data(), mt.data(), mn.data(), mx.data(), bus.data());
+        stft.synthesize (chCoherence, bus.data());
+    }
 }
 
 void Analysis::process (const float* m, int numSamples, const Needs& needs,
-                        float* tonal, float* noise, float* transient, float* pan) noexcept
+                        float* tonal, float* noise, float* transient, float* pan, float* coherenceSide,
+                        const float* sideIn, float* sideOut) noexcept
 {
     for (int i = 0; i < numSamples; ++i)
     {
+        // The decorrelated copy runs on the same frame grid as the input.
+        stftD.pushInput (needs.coherence ? coh.decorrelate (m[i]) : 0.0f);
+        stftS.pushInput (sideIn != nullptr ? sideIn[i] : 0.0f);
+        const float sx = stftS.popOutput (0);
+        if (sideOut != nullptr)
+            sideOut[i] = sx;
         if (stft.pushInput (m[i]) && needs.stages)
             analyseFrame (needs);
 
@@ -78,6 +107,9 @@ void Analysis::process (const float* m, int numSamples, const Needs& needs,
         const float t = stft.popOutput (chTonal);
         const float nz = stft.popOutput (chNoise);
         const float pn = stft.popOutput (chPan);
+        const float ch = stft.popOutput (chCoherence);
+        if (coherenceSide != nullptr)
+            coherenceSide[i] = ch;
         const float x = stft.popOutput (chTransient);
         if (tonal != nullptr)
             tonal[i] = t;

@@ -49,14 +49,25 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 // the behaviour of that older version. Returns false if the default applies.
 bool legacyValue (const juce::String& id, float& plainValue);
 
-// Raw parameter values, looked up once; read() converts them to Params.
+// Parameter values, looked up once; read() converts them to Params.
+//
+// Values come from the parameter objects themselves, which hold exactly what
+// was set or restored. `legacy` reads the APVTS mirror atomics instead, as
+// 1.0 did; a session saved by 1.0 is rendered that way so that it sounds
+// bit-identical (the mirror can sit a float step away after a reload).
 class ParamReader
 {
 public:
     explicit ParamReader (juce::AudioProcessorValueTreeState& state);
-    Params read() const noexcept;
+    Params read (bool legacy = false) const noexcept;
 
 private:
+    float value (int i, bool legacy) const noexcept;
+
     std::atomic<float>* raw[numParameters] {};
+    juce::AudioParameterFloat* floats[numParameters] {};
+    juce::AudioParameterChoice* choices[numParameters] {};
+    juce::AudioParameterInt* ints[numParameters] {};
+    juce::AudioParameterBool* bools[numParameters] {};
 };
 } // namespace sph

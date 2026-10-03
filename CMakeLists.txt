@@ -127,6 +127,12 @@ target_compile_options(sph_measure PRIVATE ${SPH_WARNINGS})
 target_link_libraries(sph_measure PRIVATE
     sph_plugin_code juce::juce_recommended_config_flags)
 
-foreach(tool sph_tests sph_plugin_tests sph_measure)
+# Offline tools (never part of the plugin build products).
+juce_add_console_app(sph_velvet_opt PRODUCT_NAME "sph_velvet_opt")
+target_sources(sph_velvet_opt PRIVATE tools/velvet_opt.cpp)
+target_compile_options(sph_velvet_opt PRIVATE ${SPH_WARNINGS})
+target_link_libraries(sph_velvet_opt PRIVATE sph_dsp juce::juce_recommended_config_flags)
+
+foreach(tool sph_tests sph_plugin_tests sph_measure sph_velvet_opt)
     set_target_properties(${tool} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 endforeach()

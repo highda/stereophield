@@ -41,9 +41,12 @@ public:
         p->setValueNotifyingHost (p->convertTo0to1 (value));
     }
 
+    // The plain value the DSP reads.
     float get (const char* id) const
     {
         auto* p = proc->state().getParameter (id);
+        if (auto* f = dynamic_cast<juce::AudioParameterFloat*> (p))
+            return f->get();
         return p->convertFrom0to1 (p->getValue());
     }
 

@@ -20,9 +20,9 @@ Written by `sph_measure --metrics`. Each factory preset on 6 s of `mix` (mono in
 | 9 | Dimension chorus, mono-safe | 0.51 | 0.52 | 0.0 dB | 1.2 LU |
 | 10 | Micro-pitch doubler | 0.77 | 0.47 | -4.9 dB | 1.1 LU |
 | 11 | Micro-pitch, mono-safe | 0.74 | 0.51 | 0.0 dB | 0.7 LU |
-| 12 | Velvet diffuse | 0.34 | 0.19 | 0.0 dB | 1.7 LU |
-| 13 | Velvet, true decorrelation | 0.75 | 0.27 | 7.0 dB | 5.2 LU |
+| 12 | Velvet diffuse | 0.63 | 0.30 | 0.0 dB | 0.9 LU |
+| 13 | Velvet, true decorrelation | 0.82 | 0.19 | -18.1 dB | 3.3 LU |
 | 14 | Scene: Adaptive | 0.81 | 0.33 | 0.0 dB | 0.4 LU |
 | 15 | Scene: Vocal | 0.93 | 0.28 | 0.0 dB | 0.1 LU |
-| 16 | Scene: Ensemble | 0.58 | 0.36 | 0.0 dB | 1.2 LU |
+| 16 | Scene: Ensemble | 0.58 | 0.35 | 0.0 dB | 1.2 LU |
 | 17 | Scene: Stable partials | 0.90 | 0.23 | 0.0 dB | 0.4 LU |

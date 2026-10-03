@@ -179,12 +179,51 @@ Result t8MicroPitch()
     return r;
 }
 
+struct VelvetStats
+{
+    double corr, rmsL, rmsR, worstBand;
+};
+
+VelvetStats velvetStats (VelvetDesign design, int variation);
+
 Result t9Velvet()
 {
-    Result r { "T9", "Velvet on noise: |corr(vL, vR)| <= 0.25; RMS within 1 dB of input; third-octave levels 125 Hz - 16 kHz within 5 dB", "", false, true, "" };
+    Result r { "T9", "Velvet (Random design) on noise: |corr(vL, vR)| <= 0.25; RMS within 1 dB of input; third-octave levels 125 Hz - 16 kHz within 5 dB", "", false, true, "" };
+    const auto st = velvetStats (VelvetDesign::Random, 0);
+    r.pass = std::abs (st.corr) <= 0.25 && std::abs (st.rmsL) <= 1.0 && std::abs (st.rmsR) <= 1.0 && st.worstBand <= 5.0;
+    r.measured = "corr " + fmt (st.corr, 3) + "; RMS L " + fmt (st.rmsL, 2) + " dB, R " + fmt (st.rmsR, 2)
+                 + " dB; worst third-octave deviation " + fmt (st.worstBand, 2) + " dB";
+    return r;
+}
+
+Result p2t25OptimisedVelvet()
+{
+    Result r { "P2-T25", "Optimised velvet, all 16 variations: third-octave deviation <= 1.5 dB and |corr| <= 0.08", "", true, true, "" };
+    double worstBand = 0.0, worstCorr = 0.0, randomBand = 0.0, randomCorr = 0.0;
+    for (int v = 0; v < 16; ++v)
+    {
+        const auto o = velvetStats (VelvetDesign::Optimised, v);
+        const auto q = velvetStats (VelvetDesign::Random, v);
+        worstBand = std::max (worstBand, o.worstBand);
+        worstCorr = std::max (worstCorr, std::abs (o.corr));
+        randomBand = std::max (randomBand, q.worstBand);
+        randomCorr = std::max (randomCorr, std::abs (q.corr));
+    }
+    r.pass = worstBand <= 1.5 && worstCorr <= 0.08;
+    if (! r.pass && worstBand <= 2.0 && worstCorr <= 0.08)
+        r.note = "fallback: best found, third-octave <= 2.0 dB";
+    r.measured = "worst over 16 variations: third-octave " + fmt (worstBand, 2) + " dB, |corr| " + fmt (worstCorr, 3)
+                 + " (Random design: " + fmt (randomBand, 2) + " dB, " + fmt (randomCorr, 3) + ")";
+    return r;
+}
+
+VelvetStats velvetStats (VelvetDesign design, int variation)
+{
     const double fs = 48000.0;
     Velvet v;
     Params p;
+    p.velvetDesign = design;
+    p.velvetVariation = variation;
     v.prepare ({ fs, 512 });
     v.setParams (p, true);
     const Signal x = noise (samples (10.0, fs));
@@ -228,10 +267,7 @@ Result t9Velvet()
         }
         worstBand = std::max ({ worstBand, std::abs (10.0 * std::log10 (el / ex)), std::abs (10.0 * std::log10 (er / ex)) });
     }
-    r.pass = std::abs (corr) <= 0.25 && std::abs (rl) <= 1.0 && std::abs (rr) <= 1.0 && worstBand <= 5.0;
-    r.measured = "corr " + fmt (corr, 3) + "; RMS L " + fmt (rl, 2) + " dB, R " + fmt (rr, 2)
-                 + " dB; worst third-octave deviation " + fmt (worstBand, 2) + " dB";
-    return r;
+    return { corr, rl, rr, worstBand };
 }
 } // namespace sph::measure
 

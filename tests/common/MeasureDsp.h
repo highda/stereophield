@@ -12,4 +12,5 @@ Result t9Velvet();
 Result t10BusesSum();
 Result t11SplitQuality();
 Result t12Ambience();
+Result p2t25OptimisedVelvet();
 } // namespace sph::measure

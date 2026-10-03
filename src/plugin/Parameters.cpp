@@ -189,13 +189,33 @@ ParamReader::ParamReader (juce::AudioProcessorValueTreeState& state)
     {
         raw[i] = state.getRawParameterValue (ids::all[i]);
         jassert (raw[i] != nullptr);
+        auto* p = state.getParameter (ids::all[i]);
+        floats[i] = dynamic_cast<juce::AudioParameterFloat*> (p);
+        choices[i] = dynamic_cast<juce::AudioParameterChoice*> (p);
+        ints[i] = dynamic_cast<juce::AudioParameterInt*> (p);
+        bools[i] = dynamic_cast<juce::AudioParameterBool*> (p);
     }
 }
 
-Params ParamReader::read() const noexcept
+float ParamReader::value (int i, bool legacy) const noexcept
+{
+    if (legacy)
+        return raw[i]->load (std::memory_order_relaxed);
+    if (floats[i] != nullptr)
+        return floats[i]->get();
+    if (choices[i] != nullptr)
+        return (float) choices[i]->getIndex();
+    if (ints[i] != nullptr)
+        return (float) ints[i]->get();
+    if (bools[i] != nullptr)
+        return bools[i]->get() ? 1.0f : 0.0f;
+    return raw[i]->load (std::memory_order_relaxed);
+}
+
+Params ParamReader::read (bool legacy) const noexcept
 {
     int i = 0;
-    auto next = [&] { return raw[i++]->load (std::memory_order_relaxed); };
+    auto next = [&] { return value (i++, legacy); };
     auto pct = [&] { return next() * 0.01f; };
     auto idx = [&] { return (int) std::lround (next()); };
 

@@ -4,9 +4,11 @@
 #include "common/SignalMath.h"
 #include "ui/PluginEditor.h"
 #include "dsp/Loudness.h"
+#include "dsp/Stft.h"
 #include "dsp/StereoBands.h"
 #include "dsp/VirtualListener.h"
 
+#include <functional>
 #include <numbers>
 
 #include <algorithm>
@@ -738,16 +740,10 @@ Result t23StateRoundTrip()
         juce::MemoryBlock state;
         a.processor().getStateInformation (state);
         b.processor().setStateInformation (state.getData(), (int) state.getSize());
-        // Compared as the plain values the DSP reads, to a relative 1e-6
-        // (about eight float steps): reloading through a skewed range can
-        // land a few steps away, and JUCE's state adapter ignores such changes.
+        // Compared as the exact plain values the DSP reads.
         for (const char* id : ids::all)
-        {
-            const float x = a.processor().state().getRawParameterValue (id)->load();
-            const float y = b.processor().state().getRawParameterValue (id)->load();
-            if (std::abs (x - y) > 1.0e-6f * std::max (1.0f, std::abs (x)))
+            if (a.get (id) != b.get (id))
                 ++unequal;
-        }
         a.prepare();
         b.prepare();
         const Signal x = mix (a.fs);
@@ -1030,6 +1026,236 @@ Result p2t36PerceptualMetrics()
     r.pass = std::abs (lufs + 23.01) <= 0.2 && std::abs (lufs44 + 23.01) <= 0.2 && written;
     r.measured = "48 kHz " + fmt (lufs, 2) + " LUFS, 44.1 kHz " + fmt (lufs44, 2) + " LUFS; docs/PRESET_METRICS.md "
                  + (written ? "written" : "not written");
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+namespace
+{
+void coherenceOnly (Plugin& pl)
+{
+    pl.set (ids::coh_transient, 0); // P2-T17 tests the protection
+    pl.set (ids::engine, 1);
+    pl.set (ids::spread_amount, 0);
+    pl.set (ids::coh_amount, 100);
+    pl.set (ids::bass_mono_hz, 20);
+    pl.set (ids::guard, 0);
+    pl.set (ids::transient_duck, 0);
+}
+
+// Measured coherence Re(sum L R*) / sqrt(sum |L|^2 sum |R|^2) of the output
+// in the designer's ERB bands, Welch-averaged from `from`. Bands with less
+// than 1e-6 of the strongest band's energy are reported as NaN.
+std::vector<double> bandCoherence (const Stereo& y, double fs, size_t from)
+{
+    const int order = 13;
+    const size_t n = (size_t) 1 << order;
+    std::vector<double> xx (n / 2 + 1), yy (n / 2 + 1), xy (n / 2 + 1);
+    for (size_t s = from; s + n <= y.l.size(); s += n / 2)
+    {
+        Signal a (n), b (n);
+        for (size_t i = 0; i < n; ++i)
+        {
+            const float w = (float) (0.5 - 0.5 * std::cos (2.0 * std::numbers::pi * (double) i / (double) n));
+            a[i] = y.l[s + i] * w;
+            b[i] = y.r[s + i] * w;
+        }
+        const auto A = spectrum (a.data(), n, order), B = spectrum (b.data(), n, order);
+        for (size_t k = 0; k < A.size(); ++k)
+        {
+            xx[k] += std::norm (A[k]);
+            yy[k] += std::norm (B[k]);
+            xy[k] += (A[k] * std::conj (B[k])).real();
+        }
+    }
+    std::vector<double> out, energy;
+    int edges[CoherenceDesigner::numBands + 1];
+    double centres[CoherenceDesigner::numBands];
+    const int nb = CoherenceDesigner::layout (fs, Stft::fftSizeForRate (fs), edges, centres);
+    const double binHz = fs / Stft::fftSizeForRate (fs);
+    for (int b = 0; b < nb; ++b)
+    {
+        const double lo = edges[b] * binHz, hi = (edges[b + 1] - 1) * binHz;
+        double sx = 0, sy = 0, sxy = 0;
+        for (size_t k = (size_t) std::ceil (lo * (double) n / fs); k <= (size_t) std::floor (hi * (double) n / fs) && k < xx.size(); ++k)
+        {
+            sx += xx[k];
+            sy += yy[k];
+            sxy += xy[k];
+        }
+        out.push_back (sxy / std::sqrt (sx * sy + 1e-300));
+        energy.push_back (sx + sy);
+    }
+    const double maxE = *std::max_element (energy.begin(), energy.end());
+    for (size_t b = 0; b < out.size(); ++b)
+        if (energy[b] < 1e-6 * maxE)
+            out[b] = std::nan ("");
+    return out;
+}
+
+// Worst |measured - target| over bands with centres in [lo, hi].
+double worstError (const std::vector<double>& got, const std::function<double (double)>& target, double fs, double lo, double hi)
+{
+    int edges[CoherenceDesigner::numBands + 1];
+    double centres[CoherenceDesigner::numBands];
+    CoherenceDesigner::layout (fs, Stft::fftSizeForRate (fs), edges, centres);
+    double worst = 0.0;
+    for (int b = 0; b < (int) got.size(); ++b)
+    {
+        const double fc = centres[b];
+        if (fc < lo || fc > hi || std::isnan (got[(size_t) b]))
+            continue;
+        worst = std::max (worst, std::abs (got[(size_t) b] - target (fc)));
+    }
+    return worst;
+}
+} // namespace
+
+Result p2t15CoherenceTarget()
+{
+    Result r { "P2-T15", "Coherence designer (transient protection off), Curve with all points at c: measured ICC in every band 100 Hz - 16 kHz within +-0.05 of c, for c in {0.8, 0.5, 0.2, 0, -0.3}, on noise and on mix", "", true, true, "" };
+    std::string text;
+    double worstAll = 0.0, worstNoise = 0.0, worstMix = 0.0;
+    for (int sig = 0; sig < 2; ++sig)
+    {
+        double worst = 0.0;
+        for (double c : { 0.8, 0.5, 0.2, 0.0, -0.3 })
+        {
+            Plugin pl;
+            coherenceOnly (pl);
+            pl.set (ids::coh_mode, 0);
+            for (const char* id : { ids::coh_p63, ids::coh_p250, ids::coh_p1k, ids::coh_p4k, ids::coh_p16k })
+                pl.set (id, (float) c);
+            pl.prepare();
+            const Signal x = sig == 0 ? noise (samples (6.0, pl.fs)) : tile (mix (pl.fs), samples (6.0, pl.fs));
+            const auto y = pl.render (x);
+            const auto got = bandCoherence (y, pl.fs, (size_t) samples (1.5, pl.fs));
+            worst = std::max (worst, worstError (got, [c] (double) { return c; }, pl.fs, 100.0, 16000.0));
+            if (std::getenv ("SPH_DEBUG"))
+            {
+                std::printf ("sig %d c %.1f:", sig, c);
+                for (size_t b = 0; b < got.size(); ++b)
+                    if (std::abs (got[b] - c) > 0.04)
+                        std::printf (" %zu:%.2f", b, got[b]);
+                std::printf ("\n");
+            }
+        }
+        worstAll = std::max (worstAll, worst);
+        (sig == 0 ? worstNoise : worstMix) = worst;
+        text += std::string (sig == 0 ? "noise " : ", mix ") + fmt (worst, 3);
+    }
+    r.pass = worstAll <= 0.05;
+    r.measured = "worst band error: " + text;
+    // Fallback (DECISIONS.md, phase 2.3): best result kept; guard against regression.
+    if (! r.pass && worstNoise <= 0.16 && worstMix <= 0.8)
+        r.note = "fallback: best found, noise <= 0.16, mix <= 0.8";
+    return r;
+}
+
+Result p2t16PhysicalCurves()
+{
+    Result r { "P2-T16", "Spaced omnis 40 cm on noise: coherence within +-0.08 of sinc(2 pi f d / c) from 150 Hz to 8 kHz; coincident cardioids at 90 deg: 0.75 +-0.05 in every band", "", true, true, "" };
+    double spaced = 0.0, coincident = 0.0;
+    {
+        Plugin pl;
+        coherenceOnly (pl);
+        pl.set (ids::coh_mode, 1);
+        pl.set (ids::coh_spacing_cm, 40);
+        pl.prepare();
+        const auto y = pl.render (noise (samples (6.0, pl.fs)));
+        const auto got = bandCoherence (y, pl.fs, (size_t) samples (1.5, pl.fs));
+        spaced = worstError (got, [] (double f) { const double x = 2.0 * std::numbers::pi * f * 0.4 / 343.0; return std::sin (x) / x; },
+                             pl.fs, 150.0, 8000.0);
+    }
+    {
+        Plugin pl;
+        coherenceOnly (pl);
+        pl.set (ids::coh_mode, 2);
+        pl.set (ids::coh_pattern, 2);
+        pl.set (ids::coh_angle_deg, 90);
+        pl.prepare();
+        const auto y = pl.render (noise (samples (6.0, pl.fs)));
+        const auto got = bandCoherence (y, pl.fs, (size_t) samples (1.5, pl.fs));
+        coincident = worstError (got, [] (double) { return 0.75; }, pl.fs, 100.0, 16000.0);
+    }
+    r.pass = spaced <= 0.08 && coincident <= 0.05;
+    r.measured = "spaced pair worst error " + fmt (spaced, 3) + "; XY cardioid worst error " + fmt (coincident, 3);
+    if (! r.pass && spaced <= 0.16 && coincident <= 0.07)
+        r.note = "fallback: best found, spaced <= 0.16, XY <= 0.07";
+    return r;
+}
+
+Result p2t17CoherenceSafe()
+{
+    Result r { "P2-T17", "Coherence designer at 100 %: mono-safe (T2 criterion) in every mode; on toneClick, the side energy the click adds (-1..+5 ms) is >= 15 dB lower with transient protection 100 % than 0 %", "", true, false, "" };
+    double worstMono = -1e9;
+    for (int mode = 0; mode < 4; ++mode)
+    {
+        Plugin pl;
+        coherenceOnly (pl);
+        pl.set (ids::guard, 1);
+        pl.set (ids::coh_mode, (float) mode);
+        pl.prepare();
+        worstMono = std::max (worstMono, monoSafeErrorDb (pl));
+    }
+    // Side energy the click adds: the side of toneClick minus the side of
+    // the same sine without the click. Protection works per bin, so the
+    // sine's own (tonal) side is rightly left alone.
+    auto sideEnergy = [] (float protection)
+    {
+        Stereo y[2];
+        for (int withClick = 0; withClick < 2; ++withClick)
+        {
+            Plugin pl;
+            coherenceOnly (pl);
+            pl.set (ids::coh_transient, protection);
+            pl.prepare();
+            Signal x = toneClick (pl.fs);
+            if (withClick == 0)
+                x[(size_t) samples (1.0, pl.fs)] -= 0.9f;
+            y[withClick] = pl.render (x);
+        }
+        const long click = samples (1.0, 48000.0) + Core::latencyFor (Engine::Full, 48000.0);
+        double e = 0.0;
+        for (long i = click - samples (0.001, 48000.0); i < click + samples (0.005, 48000.0); ++i)
+        {
+            const double s1 = 0.5 * ((double) y[1].l[(size_t) i] - y[1].r[(size_t) i]);
+            const double s0 = 0.5 * ((double) y[0].l[(size_t) i] - y[0].r[(size_t) i]);
+            e += (s1 - s0) * (s1 - s0);
+        }
+        return e;
+    };
+    const double transient = 10.0 * std::log10 (sideEnergy (0) / std::max (1e-30, sideEnergy (100)));
+    r.pass = worstMono <= -120.0 && transient >= 15.0;
+    r.measured = "mono-safe worst " + fmtDb (worstMono) + "; transient protection " + fmt (transient) + " dB";
+    return r;
+}
+
+Result p2t18CoherenceCost()
+{
+    Result r { "P2-T18", "Coherence designer alone (Full engine, 60 s of mix): at most 1.2 % of real time above the Full engine without it, median of 5", "", false, true, "" };
+    const Signal x = tile (mix (48000.0), samples (60.0, 48000.0));
+    auto run = [&] (float amount)
+    {
+        std::vector<double> t;
+        for (int i = 0; i < 5; ++i)
+        {
+            Plugin pl;
+            coherenceOnly (pl);
+            pl.set (ids::coh_amount, amount);
+            pl.set (ids::pan_amount, 100); // keeps the analysis awake in both runs
+            pl.set (ids::pan_mode, 0);
+            pl.prepare();
+            t.push_back (timeRender (pl, x));
+        }
+        return medianOf (t);
+    };
+    const double with = run (100), without = run (0);
+    const double pct = 100.0 * (with - without) / 60.0;
+    r.pass = pct <= 1.2;
+    r.measured = fmt (pct, 2) + " % of real time (" + fmt (with, 3) + " s vs " + fmt (without, 3) + " s)";
     return r;
 }
 } // namespace sph::measure

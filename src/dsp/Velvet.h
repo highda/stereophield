@@ -22,6 +22,7 @@ public:
         float sizeMs = 30.0f;
         float density = 1000.0f;
         int variation = 0;
+        VelvetDesign design = VelvetDesign::Optimised;
         bool operator== (const Structure&) const = default;
     };
 
@@ -34,6 +35,10 @@ public:
 
     // Builds one sequence; allocation-free, so it may run on the audio thread.
     static void build (Sequence& seq, double sampleRate, float sizeMs, float density, uint32_t seed) noexcept;
+
+    // Optimised sequence (PART2_LEDGER.md I1) for a variation and side: the
+    // table class nearest the specified impulse count, scaled to the length.
+    static void buildOptimised (Sequence& seq, double sampleRate, float sizeMs, float density, int variation, int side) noexcept;
 
     void prepare (const ProcessSpec& spec);
     void reset();

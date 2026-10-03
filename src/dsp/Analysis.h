@@ -1,7 +1,9 @@
 #pragma once
 
 #include "dsp/AmbienceSplit.h"
+#include "dsp/CoherenceDesigner.h"
 #include "dsp/ComponentSplit.h"
+#include "dsp/ImageExpander.h"
 #include "dsp/PanMap.h"
 #include "dsp/Stft.h"
 
@@ -16,7 +18,7 @@ namespace sph
 class Analysis
 {
 public:
-    enum Channel { chTonal = 0, chNoise, chPan, chTransient, numChannels };
+    enum Channel { chTonal = 0, chNoise, chPan, chTransient, chCoherence, numChannels };
 
     // Which outputs this block must produce. When `stages` is false only the
     // input FIFO and hop counter run (DESIGN.md section 7.5).
@@ -27,6 +29,8 @@ public:
         bool noise = true;
         bool transient = false;
         bool pan = false;
+        bool coherence = false;
+        bool expander = false;
     };
 
     void prepare (double sampleRate);
@@ -39,13 +43,19 @@ public:
         decay = roomDecaySeconds;
     }
 
+    ImageExpander& expander() noexcept { return image; }
+    void resetExpander() { image.reset(); }
+    CoherenceDesigner& coherence() noexcept { return coh; }
+    const CoherenceDesigner& coherence() const noexcept { return coh; }
+    void resetCoherence() { coh.reset(); }
     PanMap& panMap() noexcept { return pans; }
     const PanMap& panMap() const noexcept { return pans; }
     void resetPanMap() { pans.reset(); }
 
     // Outputs may be null when not needed.
     void process (const float* m, int numSamples, const Needs& needs,
-                  float* tonal, float* noise, float* transient, float* pan = nullptr) noexcept;
+                  float* tonal, float* noise, float* transient, float* pan = nullptr, float* coherenceSide = nullptr,
+                  const float* sideIn = nullptr, float* sideOut = nullptr) noexcept;
 
     int fftSize() const noexcept { return stft.fftSize(); }
     int hopSize() const noexcept { return stft.hopSize(); }
@@ -70,6 +80,10 @@ private:
     ComponentSplit split;
     AmbienceSplit ambience;
     PanMap pans;
+    CoherenceDesigner coh;
+    ImageExpander image;
+    Stft stftD, stftS;
+    std::vector<std::complex<float>> specD, specS;
     std::vector<std::complex<float>> spec, bus;
     std::vector<float> mag, mt, mx, mn, ma;
     int frames = 0;

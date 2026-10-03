@@ -21,7 +21,7 @@ StereophieldProcessor::~StereophieldProcessor()
 
 void StereophieldProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    dsp.prepare ({ sampleRate, samplesPerBlock }, reader.read());
+    dsp.prepare ({ sampleRate, samplesPerBlock }, reader.read (legacyValues.load()));
     dsp.latencyChanged.store (false);
     setLatencySamples (dsp.latencySamples());
 }
@@ -42,7 +42,7 @@ void StereophieldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     if (buffer.getNumChannels() < 2 || n == 0)
         return;
 
-    dsp.setParams (reader.read());
+    dsp.setParams (reader.read (legacyValues.load (std::memory_order_relaxed)));
     float* l = buffer.getWritePointer (0);
     float* r = buffer.getWritePointer (1);
     dsp.process (l, getTotalNumInputChannels() >= 2 ? r : nullptr, l, r, n);
@@ -72,6 +72,7 @@ void StereophieldProcessor::setCurrentProgram (int index)
     if (index < 0 || index >= (int) presets.size())
         return;
     currentProgram = index;
+    legacyValues.store (false);
     applyPreset (apvts, presets[(size_t) index]);
     dsp.requestSnap();
 }
@@ -87,6 +88,11 @@ void StereophieldProcessor::getStateInformation (juce::MemoryBlock& dest)
     auto state = apvts.copyState();
     state.setProperty ("program", currentProgram, nullptr);
     state.setProperty ("version", 2, nullptr);
+    // The tree mirrors APVTS's copy of each value, which can sit a float step
+    // away from the parameter's own; save the exact values.
+    for (auto child : state)
+        if (auto* f = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (child.getProperty ("id").toString())))
+            child.setProperty ("value", f->get(), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, dest);
@@ -99,8 +105,15 @@ void StereophieldProcessor::setStateInformation (const void* data, int size)
         {
             auto state = juce::ValueTree::fromXml (*xml);
             currentProgram = (int) state.getProperty ("program", 0);
-            completeState (state, (int) state.getProperty ("version", 1));
+            const int version = (int) state.getProperty ("version", 1);
+            completeState (state, version);
+            // replaceState writes its (possibly drifted) values back into the
+            // tree, so the saved values are kept from a copy.
+            const auto saved = state.createCopy();
             apvts.replaceState (state);
+            if (version >= 2)
+                restoreExactValues (saved);
+            legacyValues.store (version < 2);
             dsp.requestSnap();
         }
 }
@@ -122,6 +135,32 @@ void StereophieldProcessor::completeState (juce::ValueTree& state, int version)
         child.setProperty ("id", juce::String (id), nullptr);
         child.setProperty ("value", value, nullptr);
         state.appendChild (child, nullptr);
+    }
+}
+
+void StereophieldProcessor::restoreExactValues (const juce::ValueTree& saved)
+{
+    // For a skewed range, convertFrom0to1 (convertTo0to1 (x)) can differ from
+    // x by a few float steps. Search the neighbouring normalised values for
+    // one that maps back to the saved plain value exactly.
+    for (const auto& child : saved)
+    {
+        auto* p = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (child.getProperty ("id").toString()));
+        if (p == nullptr || ! child.hasProperty ("value"))
+            continue;
+        const float x = (float) (double) child.getProperty ("value");
+        if (p->get() == x)
+            continue;
+        const float v = p->convertTo0to1 (x);
+        float up = v, down = v, best = v;
+        for (int step = 0; step < 64; ++step)
+        {
+            if (p->convertFrom0to1 (up) == x) { best = up; break; }
+            if (p->convertFrom0to1 (down) == x) { best = down; break; }
+            up = std::nextafter (up, 2.0f);
+            down = std::nextafter (down, -1.0f);
+        }
+        p->setValueNotifyingHost (best);
     }
 }
 

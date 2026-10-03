@@ -29,6 +29,10 @@ Result t28InterfaceSnapshot();
 // Part 2.
 Result p2t14PerceivedWidth();
 Result p2t36PerceptualMetrics();
+Result p2t15CoherenceTarget();
+Result p2t16PhysicalCurves();
+Result p2t17CoherenceSafe();
+Result p2t18CoherenceCost();
 
 // Perceptual metrics of one stereo render against its input (I12).
 struct Perceptual
