@@ -26,3 +26,15 @@ Written by `sph_measure --metrics`. Each factory preset on 6 s of `mix` (mono in
 | 15 | Scene: Vocal | 0.88 | 0.43 | 0.0 dB | 0.3 LU |
 | 16 | Scene: Ensemble | 0.44 | 0.34 | 0.0 dB | 1.5 LU |
 | 17 | Scene: Stable partials | 0.85 | 0.24 | 0.0 dB | 0.5 LU |
+| 18 | Virtual pair: AB omnis 40 cm | 0.42 | 0.34 | 0.0 dB | 1.6 LU |
+| 19 | Virtual pair: XY cardioids | 0.86 | 0.36 | 0.0 dB | 0.4 LU |
+| 20 | Virtual pair: Blumlein | 0.19 | 0.33 | 0.0 dB | 2.4 LU |
+| 21 | Virtual pair: ORTF | 0.57 | 0.27 | 0.0 dB | 1.3 LU |
+| 22 | Coherence: tight lows, open highs | 0.74 | 0.36 | 0.0 dB | 0.7 LU |
+| 23 | Double track: vocal | 0.63 | 0.49 | 0.0 dB | 1.0 LU |
+| 24 | Double track: guitar wall | 0.80 | 0.45 | 5.2 dB | 3.7 LU |
+| 25 | Room cues: small studio | 0.98 | 0.08 | 0.0 dB | 0.1 LU |
+| 26 | Room cues: wide hall edge | 0.99 | 0.05 | 0.0 dB | 0.0 LU |
+| 27 | Image expander: 150 % | 1.00 | 0.00 | 0.0 dB | -0.0 LU |
+| 28 | Scene: Natural ensemble | 0.32 | 0.40 | 0.0 dB | 1.8 LU |
+| 29 | Scene: Intimate vocal | 0.80 | 0.44 | 0.0 dB | 0.5 LU |

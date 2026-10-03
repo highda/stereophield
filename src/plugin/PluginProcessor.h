@@ -5,12 +5,18 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <array>
+#include <vector>
+
 namespace sph
 {
 class StereophieldProcessor : public juce::AudioProcessor,
+                              public juce::ChangeBroadcaster,
                               private juce::AsyncUpdater
 {
 public:
+    // Every parameter's exact plain value (PART2_LEDGER.md I7).
+    using Snapshot = std::array<float, numParameters>;
     StereophieldProcessor();
     ~StereophieldProcessor() override;
 
@@ -47,6 +53,37 @@ public:
     // Never let modules sleep (DESIGN.md section 7.6). Tests only.
     void setForceAwake (bool on) noexcept { dsp.forceAwake = on; }
 
+    // Undo, redo and A/B compare (message thread). An undo point is the
+    // state after a finished gesture or a preset load; restoring is exact.
+    Snapshot snapshot() const;
+    void restore (const Snapshot& s);
+    void commitUndoPoint();
+    bool undo();
+    bool redo();
+    bool canUndo() const noexcept { return historyIndex > 0; }
+    bool canRedo() const noexcept { return historyIndex + 1 < (int) history.size(); }
+    int compareSlot() const noexcept { return abSlot; }
+    void selectCompareSlot (int slot);
+    void copyCompareAToB();
+
+    // User presets (I8): XML files in the user preset folder.
+    static juce::File userPresetFolder();
+    juce::StringArray userPresets() const;
+    bool saveUserPreset (const juce::String& name);
+    bool loadUserPreset (const juce::String& name);
+    bool deleteUserPreset (const juce::String& name);
+    bool loadStateXml (const juce::XmlElement& xml);
+
+    // Teaching sources (L6): 0 off, 1 noise, 2 two sources, 3 melody,
+    // 4 tone and click, 5 drum loop. Never saved; Off after a state load.
+    void setTeachingSource (int index);
+    int teachingSource() const noexcept { return teachIndex; }
+
+    // Interface language saved with the session (0 English, 1 Czech);
+    // a change is broadcast to the editor.
+    int uiLanguage() const noexcept { return language; }
+    void setUiLanguage (int l);
+
     // Applies the core's latency now; tests call this instead of running a
     // message loop.
     void flushLatencyUpdate()
@@ -64,6 +101,18 @@ private:
     ParamReader reader;
     Core dsp;
     int currentProgram = 0;
+    std::vector<Snapshot> history;
+    int historyIndex = -1;
+    std::array<Snapshot, 2> abSlots {};
+    bool abFilled[2] { false, false };
+    int abSlot = 0;
+    int language = 0;
+    int teachIndex = 0;
+    std::array<std::vector<float>, 6> teachSignals;
+    std::atomic<const std::vector<float>*> teachActive { nullptr };
+    size_t teachPos = 0;
+    void setExact (juce::RangedAudioParameter* p, float plainValue);
+    void buildTeachingSignals (double sampleRate);
     // True while rendering a session saved by 1.0 (see ParamReader).
     std::atomic<bool> legacyValues { false };
 

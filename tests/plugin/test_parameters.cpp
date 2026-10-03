@@ -77,13 +77,14 @@ TEST_CASE ("Frequency parameters put the geometric mean at the centre", "[parame
     }
 }
 
-TEST_CASE ("17 factory presets are exposed as programs", "[presets]")
+TEST_CASE ("29 factory presets are exposed as programs", "[presets]")
 {
     test::Plugin pl;
     auto& proc = pl.processor();
-    REQUIRE (proc.getNumPrograms() == 17);
+    REQUIRE (proc.getNumPrograms() == 29);
     CHECK (proc.getProgramName (0) == "Default: Orban comb");
     CHECK (proc.getProgramName (16) == "Scene: Stable partials");
+    CHECK (proc.getProgramName (28) == "Scene: Intimate vocal");
 
     // Preset 2 changes exactly its listed parameters from the defaults.
     proc.setCurrentProgram (1);

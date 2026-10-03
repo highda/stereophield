@@ -43,6 +43,34 @@ inline constexpr int numParameters = (int) (sizeof (ids::all) / sizeof (ids::all
 
 inline constexpr int numParametersV1 = 50;
 
+// A float parameter that keeps its exact plain value. JUCE's float
+// parameter stores convertFrom0to1 (normalised), so some plain values (0 dB on
+// a -24 .. +12 dB range needs exactly 2/3) can never be restored exactly, and a
+// reload or undo would move the sound by a float step. Hosts and JUCE still
+// see ordinary normalised values; the DSP reads plain().
+class ExactFloatParameter : public juce::AudioParameterFloat
+{
+public:
+    using juce::AudioParameterFloat::AudioParameterFloat;
+
+    float plain() const noexcept { return exact.load (std::memory_order_relaxed); }
+
+    // Sets the plain value exactly and notifies the host and listeners.
+    void setPlain (float x)
+    {
+        setValueNotifyingHost (convertTo0to1 (x));
+        exact.store (x, std::memory_order_relaxed);
+    }
+
+private:
+    float getValue() const override { return convertTo0to1 (exact.load (std::memory_order_relaxed)); }
+    // Everything JUCE and hosts use goes through these two overrides; the
+    // base class's own copy (read only by its non-virtual get()) is unused.
+    void setValue (float normalised) override { exact.store (convertFrom0to1 (normalised), std::memory_order_relaxed); }
+
+    std::atomic<float> exact { get() };
+};
+
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
 // Value a parameter takes when a session saved before it existed is loaded:
@@ -65,7 +93,7 @@ private:
     float value (int i, bool legacy) const noexcept;
 
     std::atomic<float>* raw[numParameters] {};
-    juce::AudioParameterFloat* floats[numParameters] {};
+    ExactFloatParameter* floats[numParameters] {};
     juce::AudioParameterChoice* choices[numParameters] {};
     juce::AudioParameterInt* ints[numParameters] {};
     juce::AudioParameterBool* bools[numParameters] {};

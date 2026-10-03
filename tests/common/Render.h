@@ -45,8 +45,8 @@ public:
     float get (const char* id) const
     {
         auto* p = proc->state().getParameter (id);
-        if (auto* f = dynamic_cast<juce::AudioParameterFloat*> (p))
-            return f->get();
+        if (auto* f = dynamic_cast<ExactFloatParameter*> (p))
+            return f->plain();
         return p->convertFrom0to1 (p->getValue());
     }
 

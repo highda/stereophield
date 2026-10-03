@@ -7,7 +7,7 @@ namespace sph
 namespace
 {
 using Layout = juce::AudioProcessorValueTreeState::ParameterLayout;
-using Float = juce::AudioParameterFloat;
+using Float = ExactFloatParameter;
 using Choice = juce::AudioParameterChoice;
 using Int = juce::AudioParameterInt;
 using Bool = juce::AudioParameterBool;
@@ -190,7 +190,7 @@ ParamReader::ParamReader (juce::AudioProcessorValueTreeState& state)
         raw[i] = state.getRawParameterValue (ids::all[i]);
         jassert (raw[i] != nullptr);
         auto* p = state.getParameter (ids::all[i]);
-        floats[i] = dynamic_cast<juce::AudioParameterFloat*> (p);
+        floats[i] = dynamic_cast<ExactFloatParameter*> (p);
         choices[i] = dynamic_cast<juce::AudioParameterChoice*> (p);
         ints[i] = dynamic_cast<juce::AudioParameterInt*> (p);
         bools[i] = dynamic_cast<juce::AudioParameterBool*> (p);
@@ -202,7 +202,7 @@ float ParamReader::value (int i, bool legacy) const noexcept
     if (legacy)
         return raw[i]->load (std::memory_order_relaxed);
     if (floats[i] != nullptr)
-        return floats[i]->get();
+        return floats[i]->plain();
     if (choices[i] != nullptr)
         return (float) choices[i]->getIndex();
     if (ints[i] != nullptr)

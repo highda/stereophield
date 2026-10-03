@@ -12,7 +12,7 @@ TEST_CASE ("Every preset at all six sample rates", "[rates]")
 {
     for (double fs : { 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0 })
     {
-        for (int preset = 1; preset <= 17; ++preset)
+        for (int preset = 1; preset <= (int) factoryPresets().size(); ++preset)
         {
             INFO ("fs " << fs << " preset " << preset);
             Plugin pl (fs, 512);
