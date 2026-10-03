@@ -25,3 +25,5 @@ SPH_P2_TEST (p2t23ImageRemap, "P2-T23 image expander remaps positions", "[P2-T23
 SPH_P2_TEST (p2t24ImageMonoSafe, "P2-T24 image expander keeps mono", "[P2-T24]")
 SPH_P2_TEST (p2t9ScopeCorrectness, "P2-T9 scope correctness", "[P2-T9]")
 SPH_P2_TEST (p2t10ScopeCost, "P2-T10 scope cost", "[P2-T10]")
+SPH_P2_TEST (p2t13MonoFoldMeter, "P2-T13 mono-fold meter", "[P2-T13]")
+SPH_P2_TEST (p2t37WholeBudget, "P2-T37 whole-plugin budget", "[P2-T37]")

@@ -1,6 +1,7 @@
 #include "ui/Displays.h"
 
 #include "dsp/PanMap.h"
+#include "ui/Strings.h"
 
 #include <cmath>
 
@@ -205,7 +206,7 @@ void PanMapDisplay::paint (juce::Graphics& g)
     {
         g.setColour (colours::secondary);
         g.setFont (bodyFont());
-        g.drawText ("Full engine only", plot, juce::Justification::centred);
+        g.drawText (tr ("ui.fullonly"), plot, juce::Justification::centred);
         return;
     }
 

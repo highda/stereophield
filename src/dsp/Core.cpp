@@ -65,6 +65,11 @@ void Core::prepare (const ProcessSpec& s, const Params& p)
     out.prepare (spec);
     meters.prepare (fs);
     scopes.prepare (fs);
+    autoListener.prepare (fs, 0.3);
+    autoL.assign ((size_t) autoListener.windowSize(), 0.0f);
+    autoR.assign ((size_t) autoListener.windowSize(), 0.0f);
+    autoFill = 0;
+    autoGain = 1.0;
     outputRing.prepare();
 
     for (auto* v : { &m, &sIn, &mD, &sInD, &e, &tonal, &noise, &tonalNoise, &panSide, &panPost, &cohSide, &sExp, &ratio, &preS, &preM, &sOld, &mOld, &fullW, &tapTmp, &tapTmp2, &guardGain, &transientBus, &sBus, &dBus, &sTmp, &mTmp, &sSyn, &mOut, &outTmpL, &outTmpR })
@@ -221,6 +226,32 @@ void Core::startSwitch (GenPair<G>& pair)
     pair.pn = pair.po = pair.pc = 0.0f;
 }
 
+void Core::autoWidth (const float* l, const float* r, int n) noexcept
+{
+    // Every 100 ms window of the output feeds the virtual listener (its FFT
+    // and buffers are prepared, so nothing allocates). The width gain then
+    // moves toward the target perceived width: proportional to the error,
+    // with a 2 s time constant, at most 3 dB per second, between -24 and
+    // +12 dB. The correlation guard stays in force after it.
+    const int w = autoListener.windowSize();
+    for (int i = 0; i < n; ++i)
+    {
+        autoL[(size_t) autoFill] = l[i];
+        autoR[(size_t) autoFill] = r[i];
+        if (++autoFill < w)
+            continue;
+        autoFill = 0;
+        autoListener.addWindow (autoL.data(), autoR.data());
+        const double asw = autoListener.asw();
+        autoAsw.store ((float) asw, std::memory_order_relaxed);
+        const double dt = (double) w / spec.sampleRate;
+        const double errorDb = 40.0 * (params.aswTarget - asw); // ASW error mapped to a dB step
+        const double step = std::clamp (errorDb * dt / autoTau, -autoRate * dt, autoRate * dt);
+        const double db = std::clamp (20.0 * std::log10 (autoGain) + step, -24.0, 12.0);
+        autoGain = std::pow (10.0, db / 20.0);
+    }
+}
+
 int Core::samplesUntilEngineSwitch() const noexcept
 {
     return engineSwitching ? engineFadePos : spec.maxBlockSize;
@@ -244,7 +275,12 @@ void Core::process (const float* inL, const float* inR, float* outL, float* outR
             g.setParams (params, false);
         roomGen.setParams (params, false);
         expanderMix.setTargetValue (params.imgAmount != 1.0f || params.imgDiffuse != 1.0f ? 1.0f : 0.0f);
-        side.setParams (params, false);
+        {
+            Params sp = params;
+            if (params.widthMode == WidthMode::Auto)
+                sp.width = (float) std::min (2.0, params.width * autoGain);
+            side.setParams (sp, false);
+        }
         out.setParams (params, false);
         const float amounts[numGenerators] = { params.spreadAmount, params.delayAmount, params.modAmount, params.velvetAmount,
                                                params.panAmount, params.cohAmount, params.dblAmount, params.roomAmount };
@@ -493,6 +529,9 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         analyser.coherence().setParams (params);
         analyser.expander().setParams (params);
         const bool tapTransient = scopes.enabled (ScopeTaps::busTransient);
+        // An enabled tap computes its bus even when no generator reads it.
+        needTonal = needTonal || (stages && scopes.enabled (ScopeTaps::busTonal));
+        needNoise = needNoise || (stages && scopes.enabled (ScopeTaps::busNoise));
         const Analysis::Needs needs { stages, stages && needTonal, stages && needNoise, stages && tapTransient, stages && panAwake,
                                       stages && cohAwake, stages && expanderOn,
                                       stages && params.transientMode == TransientMode::SpectralFlux };
@@ -761,9 +800,14 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     }
 
     meters.process (outL, outR, n);
+    if (params.widthMode == WidthMode::Auto)
+        autoWidth (outL, outR, n);
+    else
+        autoGain = 1.0;
     scopes.setActivity (awakeMask | (analyserSleep.isAsleep() ? 0u : 1u << 16) | (sideAwake ? 1u << 17 : 0u)
                         | (detectorSleep.isAsleep() ? 0u : 1u << 18));
-    scopes.write (ScopeTaps::outL, outL, n); // always: it also records the activity
+    if (scopes.enabled (ScopeTaps::outL)) // also records the activity
+        scopes.write (ScopeTaps::outL, outL, n);
     if (scopes.enabled (ScopeTaps::outR))
         scopes.write (ScopeTaps::outR, outR, n);
     if (scopes.enabled (ScopeTaps::outM) || scopes.enabled (ScopeTaps::outS))

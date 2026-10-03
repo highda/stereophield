@@ -119,7 +119,7 @@ void CoherenceDesigner::setParams (const Params& p) noexcept
     params = p;
 }
 
-double CoherenceDesigner::target (double f) const noexcept
+double CoherenceDesigner::targetFor (const Params& params, double f) noexcept
 {
     double c = 1.0;
     const double speed = 343.0;

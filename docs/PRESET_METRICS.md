@@ -10,7 +10,7 @@ Written by `sph_measure --metrics`. Each factory preset on 6 s of `mix` (mono in
 | # | Preset | Correlation | ASW | Mono fold | Loudness |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Default: Orban comb | 0.67 | 0.40 | 0.0 dB | 0.8 LU |
-| 2 | Classic: Haas | -0.04 | 0.48 | -10.2 dB | -0.0 LU |
+| 2 | Classic: Haas | -0.04 | 0.48 | -10.3 dB | -0.0 LU |
 | 3 | Classic: Haas, mono-safe | 0.56 | 0.34 | 0.0 dB | 1.1 LU |
 | 4 | Classic: Lauridsen | 0.28 | 0.32 | 0.0 dB | 2.0 LU |
 | 5 | Classic: Orban, full depth | 0.29 | 0.37 | 0.0 dB | 2.0 LU |
@@ -21,7 +21,7 @@ Written by `sph_measure --metrics`. Each factory preset on 6 s of `mix` (mono in
 | 10 | Micro-pitch doubler | 0.77 | 0.47 | -4.9 dB | 1.1 LU |
 | 11 | Micro-pitch, mono-safe | 0.74 | 0.51 | 0.0 dB | 0.7 LU |
 | 12 | Velvet diffuse | 0.63 | 0.30 | 0.0 dB | 0.9 LU |
-| 13 | Velvet, true decorrelation | 0.82 | 0.19 | -18.1 dB | 3.3 LU |
+| 13 | Velvet, true decorrelation | 0.82 | 0.19 | -20.6 dB | 3.3 LU |
 | 14 | Scene: Adaptive | 0.70 | 0.36 | 0.0 dB | 0.7 LU |
 | 15 | Scene: Vocal | 0.88 | 0.43 | 0.0 dB | 0.3 LU |
 | 16 | Scene: Ensemble | 0.44 | 0.34 | 0.0 dB | 1.5 LU |

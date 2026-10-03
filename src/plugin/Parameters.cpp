@@ -55,11 +55,21 @@ std::unique_ptr<Choice> choice (const char* id, const char* name, juce::StringAr
 }
 
 const juce::StringArray sources { "Full", "Tonal", "Noise", "Tonal+Noise" };
+
+struct ParameterList
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>>& v;
+    template <typename P> void add (std::unique_ptr<P> p) { v.push_back (std::move (p)); }
+};
 } // namespace
 
 Layout createParameterLayout()
 {
-    Layout l;
+    // Parameters are created in their 1.0 order and then placed in host
+    // groups (PART2_LEDGER.md I10). Audio Unit hosts identify parameters by
+    // a hash of their ID, so grouping changes no automation.
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> all;
+    ParameterList l { all };
     // Global, section 8.2. The engine changes latency, so it is not automatable.
     l.add (choice (ids::engine, "Engine", { "Light", "Full" }, 0, false));
     l.add (percent (ids::width, "Width", 200.0f, 100.0f));
@@ -169,8 +179,44 @@ Layout createParameterLayout()
     l.add (choice (ids::latency_mode, "Latency mode", { "Per engine", "Always Full" }, 0, false, v2));
     l.add (choice (ids::transient_mode, "Transient detector", { "Envelope", "Spectral flux" }, 1, true, v2));
     l.add (choice (ids::pan_ownership, "Pan bin ownership", { "Hard", "Soft" }, 0, true, v2));
-    return l;
+    l.add (choice (ids::width_mode, "Width mode", { "Manual", "Auto" }, 0, true, v2));
+    l.add (plain (ids::asw_target, "Auto-width target", 0.0f, 0.55f, 0.3f, "", 2, v2));
+
+    static const std::vector<std::pair<const char*, std::vector<const char*>>> groups {
+        { "Global", { ids::engine, ids::latency_mode, ids::bypass } },
+        { "Analysis", { ids::ambience, ids::room_decay_s, ids::transient_mode } },
+        { "Spread", { ids::spread_amount, ids::spread_source, ids::spread_type, ids::spread_time_ms, ids::spread_density,
+                      ids::spread_f_lo, ids::spread_f_hi, ids::spread_skew, ids::spread_q } },
+        { "Delay", { ids::delay_amount, ids::delay_source, ids::delay_time_ms, ids::delay_lp_hz, ids::delay_side } },
+        { "Mod", { ids::mod_amount, ids::mod_source, ids::mod_type, ids::mod_rate_hz, ids::mod_depth_ms, ids::mod_base_ms,
+                   ids::mod_cents, ids::mod_predelay_ms } },
+        { "Velvet", { ids::velvet_amount, ids::velvet_source, ids::velvet_size_ms, ids::velvet_density, ids::velvet_variation, ids::velvet_design } },
+        { "Pan map", { ids::pan_amount, ids::pan_mode, ids::pan_depth, ids::pan_density, ids::pan_bass_center_hz, ids::pan_max_groups, ids::pan_ownership } },
+        { "Coherence", { ids::coh_amount, ids::coh_source, ids::coh_mode, ids::coh_p63, ids::coh_p250, ids::coh_p1k, ids::coh_p4k,
+                         ids::coh_p16k, ids::coh_spacing_cm, ids::coh_angle_deg, ids::coh_pattern, ids::coh_transient } },
+        { "Double", { ids::dbl_amount, ids::dbl_source, ids::dbl_offset_ms, ids::dbl_drift_ms, ids::dbl_drift_rate, ids::dbl_pitch_cents,
+                      ids::dbl_level_db, ids::dbl_tone_db, ids::dbl_seed } },
+        { "Room", { ids::room_amount, ids::room_source, ids::room_size, ids::room_distance, ids::room_absorb, ids::room_order, ids::room_damp_hz } },
+        { "Image", { ids::img_amount, ids::img_diffuse, ids::img_center_hz } },
+        { "Side bus", { ids::bass_mono_hz, ids::band_xover_lo, ids::band_xover_hi, ids::band_low, ids::band_mid, ids::band_high,
+                        ids::transient_duck, ids::guard } },
+        { "Output", { ids::width, ids::mid_blend, ids::comp_mode, ids::out_gain_db, ids::listen, ids::width_mode, ids::asw_target } },
+    };
+    Layout layout;
+    for (const auto& [name, members] : groups)
+    {
+        auto group = std::make_unique<juce::AudioProcessorParameterGroup> (juce::String (name).toLowerCase().removeCharacters (" "), name, " | ");
+        for (const char* id : members)
+            for (auto& p : all)
+                if (p != nullptr && p->getParameterID() == id)
+                    group->addChild (std::move (p));
+        layout.add (std::move (group));
+    }
+    // Every parameter is in a group.
+    jassert (std::all_of (all.begin(), all.end(), [] (const auto& p) { return p == nullptr; }));
+    return layout;
 }
+
 
 bool legacyValue (const juce::String& id, float& plainValue)
 {
@@ -312,6 +358,8 @@ Params ParamReader::read (bool legacy) const noexcept
     p.latencyMode = (LatencyMode) idx();
     p.transientMode = (TransientMode) idx();
     p.panOwnership = (PanOwnership) idx();
+    p.widthMode = (WidthMode) idx();
+    p.aswTarget = next();
     jassert (i == numParameters);
     return p;
 }

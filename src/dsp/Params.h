@@ -16,6 +16,7 @@ enum class VelvetDesign { Random, Optimised };
 enum class LatencyMode { PerEngine, AlwaysFull };
 enum class TransientMode { Envelope, SpectralFlux };
 enum class PanOwnership { Hard, Soft };
+enum class WidthMode { Manual, Auto };
 
 // Every parameter of DESIGN.md section 8 in processing units: percentages are
 // fractions (0 to 1, or 0 to 2 for widths), times in ms, frequencies in Hz.
@@ -98,6 +99,8 @@ struct Params
     LatencyMode latencyMode = LatencyMode::PerEngine;
     TransientMode transientMode = TransientMode::SpectralFlux;
     PanOwnership panOwnership = PanOwnership::Hard;
+    WidthMode widthMode = WidthMode::Manual;
+    float aswTarget = 0.3f;
 };
 
 // Generators, in the order of the signal-flow diagram.

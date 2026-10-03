@@ -38,6 +38,8 @@ const std::vector<Entry>& registry()
         { "T28", t28InterfaceSnapshot },
         { "P2-T9", p2t9ScopeCorrectness },
         { "P2-T10", p2t10ScopeCost },
+        { "P2-T11", p2t11ViewSnapshots },
+        { "P2-T13", p2t13MonoFoldMeter },
         { "P2-T14", p2t14PerceivedWidth },
         { "P2-T15", p2t15CoherenceTarget },
         { "P2-T16", p2t16PhysicalCurves },
@@ -55,6 +57,8 @@ const std::vector<Entry>& registry()
         { "P2-T28", p2t28FluxDetector },
         { "P2-T29", p2t29SoftOwnership },
         { "P2-T36", p2t36PerceptualMetrics },
+        { "P2-T37", p2t37WholeBudget },
+        { "R3", r3AutoWidth },
     };
     return entries;
 }

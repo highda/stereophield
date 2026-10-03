@@ -26,7 +26,7 @@ namespace ids
     X (dbl_level_db) X (dbl_tone_db) X (dbl_seed) \
     X (room_amount) X (room_source) X (room_size) X (room_distance) X (room_absorb) X (room_order) X (room_damp_hz) \
     X (img_amount) X (img_diffuse) X (img_center_hz) \
-    X (velvet_design) X (latency_mode) X (transient_mode) X (pan_ownership)
+    X (velvet_design) X (latency_mode) X (transient_mode) X (pan_ownership) X (width_mode) X (asw_target)
 
 #define SPH_DECLARE_ID(name) inline constexpr const char* name = #name;
 SPH_PARAM_IDS (SPH_DECLARE_ID)

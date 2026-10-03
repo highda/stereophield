@@ -38,6 +38,12 @@ bool helpIn (const juce::String& key, Language l, Help& out);
 
 // Global preference (shared by instances), stored in
 // ~/Library/Application Support/highda/stereophield.settings.
+// Tests turn persistence off so they never change the user's settings file.
+void setPreferencesPersistent (bool on) noexcept;
 void loadLanguagePreference();
 void saveLanguagePreference();
+int savedLanguagePreference();
+// Other global interface preferences in the same file.
+double savedSetting (const char* name, double fallback);
+void saveSetting (const char* name, double value);
 } // namespace sph::ui

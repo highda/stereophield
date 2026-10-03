@@ -1,34 +1,57 @@
 # Measurements
 
-Written by `sph_measure --all` on 2026-10-03. Release build, 48 kHz and block 512 unless a criterion says otherwise.
+Written by `sph_measure --all` on 2026-10-04. Release build, 48 kHz and block 512 unless a criterion says otherwise.
 
 | Test | Criterion | Measured | Result |
 | --- | --- | --- | --- |
 | T1 | STFT identity: output minus input delayed by the measured latency <= -100 dB at 44.1, 48, 96 kHz | worst -138.8 dB; latency 2048, 2048, 4096 samples (N) | pass |
-| T2 | Mono-safe: (L+R)/2 - out_gain * M_d <= -120 dB (every preset with mid_blend 0, 20 random sets; mix; 44.1, 48, 96 kHz) | worst -131.8 dB over 111 renders | pass |
+| T2 | Mono-safe: (L+R)/2 - out_gain * M_d <= -120 dB (every preset with mid_blend 0, 20 random sets; mix; 44.1, 48, 96 kHz) | worst -132.0 dB over 147 renders | pass |
 | T3 | Peak of (L+R)/2 for an impulse with width 0 is at getLatencySamples(); Light gives 0 | Light 0 0 0; Full 2048 2048 4096 samples at 44.1/48/96 kHz | pass |
 | T4 | Spread: \|L\|^2 + \|R\|^2 flat within 0.1 dB from 20 Hz to 20 kHz, both types | Delay 0.0000 dB, Cascade 0.0000 dB | pass |
 | T5 | Spread: Pearson correlation of \|L\|^2 and \|R\|^2 at 400 log points 50 Hz - 15 kHz <= -0.9, both types | Delay -1.0000, Cascade -1.0000 | pass |
 | T6 | Preset 2 on noise: L - input <= -100 dB; R - input delayed 720 samples <= -60 dB | L -138.5 dB, R -137.9 dB | pass |
 | T7 | Chorus: dL + dR = 2 * mod_base_ms within 0.0001 ms at every sample; no NaN | max \|dL + dR - 2 base\| 0.000 ns over 3 settings; no NaN | pass |
 | T8 | Micro-pitch 9 cents on sine(1000): pL peak 1005.21 Hz, pR 994.81 Hz, each within 0.58 Hz | pL 1005.21 Hz, pR 994.82 Hz | pass |
-| T9 | Velvet on noise: \|corr(vL, vR)\| <= 0.25; RMS within 1 dB of input; third-octave levels 125 Hz - 16 kHz within 5 dB | corr 0.149; RMS L -0.00 dB, R 0.01 dB; worst third-octave deviation 4.44 dB | pass |
+| T9 | Velvet (Random design) on noise: \|corr(vL, vR)\| <= 0.25; RMS within 1 dB of input; third-octave levels 125 Hz - 16 kHz within 5 dB | corr 0.149; RMS L -0.00 dB, R 0.01 dB; worst third-octave deviation 4.44 dB | pass |
 | T10 | Full analysis on mix: tonal + transient + noise - input delayed by Lat <= -90 dB | -139.0 dB | pass |
 | T11 | ambience 0. sine(440): tonal within 1 dB, others <= -20 dB. clicks: transient >= 10 dB above others. noise: noise >= 3 dB above others | sine T/N/X -0.0/-48.5/-57.2 dB; clicks -600.0/-600.0/-0.0 dB; noise -11.4/-4.9/-11.6 dB | pass |
 | T12 | decayTone, ambience 100 %, decay 1 s: magnitude-weighted mean of ma <= 0.1 over 0.3-1.0 s and >= 0.3 over 1.1-1.8 s | steady 0.002, decaying 0.686 | pass |
 | T13 | twoSource, Groups, 1.5-2.5 s: exactly 2 groups; >= 12 of 16 partials in the right group; opposite pans; each source >= 6 dB louder on its own side | groups 2..2 over 94 frames; 15/16 partials correct; pans A -0.50, B 1.00; L-R A -6.1 dB, B 15.0 dB | pass |
 | T14 | melody, same setup as T13: all four notes receive the same pan | pans -0.50, -0.50, -0.50, -0.50 | pass |
-| T15 | toneClick, Spread only, duck 100 % vs 0: side energy -1..+5 ms around the click >= 20 dB lower (Full); +0.5..+5 ms >= 10 dB lower (Light) | Full 33.0 dB lower, Light 37.5 dB lower | pass |
-| T16 | All generators at 100 %, width 200 %, guard On, noise: correlation of every 100 ms window after 500 ms >= -0.1 | minimum -0.071 | pass |
+| T15 | toneClick, Spread only, duck 100 % vs 0: side energy -1..+5 ms around the click >= 20 dB lower (Full); +0.5..+5 ms >= 10 dB lower (Light) | Full 28.7 dB lower, Light 37.5 dB lower | pass |
+| T16 | All generators at 100 %, width 200 %, guard On, noise: correlation of every 100 ms window after 500 ms >= -0.1 | minimum -0.073 | pass |
 | T17 | Preset 16 with vs without forceAwake. gapNoise: difference <= -100 dB over the whole render. noise with each of Spread, Delay, Mod, Velvet at 0 for 1 s and back: <= -80 dB from 150 ms after each wake | part 1 -inf dB; part 2 Spread/Delay/Mod/Velvet -inf dB, -inf dB, -inf dB, -inf dB | pass |
-| T18 | Preset 16, 20 s renders, median of 5: silent input <= 0.2 x the time of noise; all amounts 0 with noise <= 0.2 x | noise 0.549 s; silent 0.010 s (0.019x); all amounts 0 0.011 s (0.019x) | pass |
-| T19 | Allocations inside processBlock, presets 1, 14, 16 with parameter automation: count is 0 | 0 allocations | pass |
+| T18 | Preset 16, 20 s renders, median of 5: silent input <= 0.2 x the time of noise; all amounts 0 with noise <= 0.2 x | noise 0.574 s; silent 0.030 s (0.052x); all amounts 0 0.029 s (0.051x) | pass |
+| T19 | Allocations inside processBlock, presets 1, 14, 16 with parameter automation, every Part 2 generator awake and every scope tap enabled: count is 0 | 0 allocations | pass |
 | T20 | forceAwake, preset 16, noise 1 s then silence 5 s: no output sample with 0 < \|x\| < 1e-30 | 0 samples; smallest non-zero magnitude -600 dBFS | pass |
-| T21 | 200 random parameter sets over block sizes 16/64/512/1024 and 44.1/48/96 kHz, mix: no NaN or infinity; output peak <= 4 x input peak x out_gain | 0 non-finite renders; worst peak ratio 1.99 | pass |
+| T21 | 200 random parameter sets over block sizes 16/64/512/1024 and 44.1/48/96 kHz, mix: no NaN or infinity; output peak <= 4 x input peak x out_gain | 0 non-finite renders; worst peak ratio 2.94 | pass |
 | T22 | Presets 1 and 14, mix, block 32 vs 1024: difference <= -100 dB | preset 1 -inf dB, preset 14 -inf dB | pass |
 | T23 | Random parameter set, save state, load into a new instance: every parameter equal; rendered output identical | 0 parameters differ; output difference -inf dB over 5 sets | pass |
 | T24 | auval -v aufx Stph Hgda ends with AU VALIDATION SUCCEEDED | AU VALIDATION SUCCEEDED | pass |
-| T25 | 60 s of mix at block 512, median of 5: preset 16 <= 4.8 s (8 % of real time); preset 1 <= 0.9 s | preset 16 1.472 s (2.45 % of real time); preset 1 0.097 s (0.16 %) | pass |
-| T26 | Every preset, 5 s of mix: no NaN; peak <= 4 x input peak; presets with mid_blend 0 pass T2 (<= -120 dB) | 17 presets, 0 non-finite; worst peak ratio 1.90; 13 mono-safe presets, worst -138.3 dB | pass |
+| T25 | 60 s of mix at block 512, median of 5: preset 16 <= 4.8 s (8 % of real time); preset 1 <= 0.9 s | preset 16 1.549 s (2.58 % of real time); preset 1 0.123 s (0.21 %) | pass |
+| T26 | Every preset, 5 s of mix: no NaN; peak <= 4 x input peak; presets with mid_blend 0 pass T2 (<= -120 dB) | 29 presets, 0 non-finite; worst peak ratio 2.02; 24 mono-safe presets, worst -138.3 dB | pass |
 | T27 | Bypass on, stereo noise: output - input delayed by Lat <= -120 dB, both engines | Light -149.5 dB (Lat 0), Full -149.5 dB (Lat 2048) | pass |
-| T28 | Editor snapshot docs/ui.png (Light) and docs/ui-full.png (Full) exist, are 980 x 640 points, and have been inspected | Light 980 x 640; Full 980 x 640; inspected, see docs/DECISIONS.md | pass |
+| T28 | Editor snapshots: docs/ui.png (Light), docs/ui-full.png (Full), docs/ui-cz.png (Czech) at 1240 x 800 points, inspected | docs/ui.png 1240 x 800; docs/ui-full.png 1240 x 800; docs/ui-cz.png 1240 x 800; inspected, see docs/DECISIONS.md | pass |
+| P2-T9 | Scope taps on mix: input and output taps equal the min/max columns of the offline signals within 1e-6; bus.full equals in.M, side.syn equals out.S (mono input, Mono-exact, 0 dB), env.duck and env.guard stay within [0, 1] | 9600 columns; worst error 0.00 x 1e-9; identities 29.80 x 1e-9; envelopes within [0, 1] | pass |
+| P2-T10 | Preset 16, 60 s of mix: all scope taps enabled cost at most 2 % of real time more than none (at most 0.15 % per tap), median of 5 | 0.162 % of real time for 24 taps and the output ring (0.0068 % per tap) | pass |
+| P2-T11 | Snapshots of the Flow, Scopes, Bands, Coherence and Pan map views in English and Czech exist at the window size and have been inspected (docs/ui-views/) | 10 of 10 snapshots written; inspected, see docs/DECISIONS.md | pass |
+| P2-T13 | Mono-fold meter: within 0.01 dB of 0 in every band for every preset with mid_blend 0; for preset 2 on noise, within 0.5 dB per band of an independent Welch estimate (32768-point frames) of the mono sum against the input | 24 mono-safe presets, worst 0.0000 dB; preset 2 worst band difference 0.38 dB | pass |
+| P2-T14 | Virtual listener. Speakers: identical L/R ASW <= 0.05; hard-panned source <= 0.1; ASW rises strictly as coherence falls 1, 0.75, 0.5, then stays within 0.05 (crosstalk floor); independent noise in [0.4, 0.8]. Headphones: rises strictly 1 to 0; independent >= 0.9 | speakers: identical 0.000, hard-panned 0.008, coherence 1..0 0.00, 0.42, 0.55, 0.57, 0.57; headphones 0.00, 0.25, 0.50, 0.74, 0.92 | pass |
+| P2-T15 | Coherence designer (transient protection off), Curve with all points at c: measured ICC in every band 100 Hz - 16 kHz within +-0.05 of c, for c in {0.8, 0.5, 0.2, 0, -0.3}, on noise and on mix | worst band error: noise 0.145, mix 0.760 | fallback (fallback: best found, noise <= 0.16, mix <= 0.8) |
+| P2-T16 | Spaced omnis 40 cm on noise: coherence within +-0.08 of sinc(2 pi f d / c) from 150 Hz to 8 kHz; coincident cardioids at 90 deg: 0.75 +-0.05 in every band | spaced pair worst error 0.145; XY cardioid worst error 0.059 | fallback (fallback: best found, spaced <= 0.16, XY <= 0.07) |
+| P2-T17 | Coherence designer at 100 %: mono-safe (T2 criterion) in every mode; on toneClick, the side energy the click adds (-1..+5 ms) is >= 15 dB lower with transient protection 100 % than 0 % | mono-safe worst -152.5 dB; transient protection 15.2 dB | pass |
+| P2-T18 | Coherence designer alone (Full engine, 60 s of mix): at most 1.2 % of real time above the Full engine without it, median of 5 | 0.13 % of real time (1.499 s vs 1.419 s) | pass |
+| P2-T19 | Double-tracker over 300 s: each take's delay within offset +- 3.5 drift; pitch-only wow has a standard deviation within 20 % of dbl_pitch_cents; the two takes' drifts are uncorrelated (\|rho\| <= 0.2) | worst delay deviation 3.37 x drift (limit 3.5); wow 3.87 cents for 4; drift correlation 0.065 | pass |
+| P2-T20 | Double-tracker: at defaults no delay step above 0.05 samples; at any setting no slope change above 0.01 samples per sample (no click); no NaN under 50 random settings | defaults: largest step 0.0233 samples; any setting: largest slope change 0.00098 samples/sample; no NaN | pass |
+| P2-T21 | Room cues, 8 m room, order 2, ORTF pair: every reflection's delay at each microphone within 1 sample and gain within 0.1 dB of an independent image-source calculation; none later than 80 ms; energy after 85 ms <= -100 dB; side/mid on noise >= -30 dB (the room adds width) | 24 of 24 reflections; worst delay error 0.49 samples, gain 0.000 dB; latest 41.4 ms; energy after 85 ms -inf dB; side/mid on noise -16.6 dB | pass |
+| P2-T22 | Room cues at 100 %: mono-safe (T2 criterion, <= -120 dB) at every order and at the size and distance extremes | worst -158.2 dB over 8 settings | pass |
+| P2-T23 | Image expander at 150 %, five constant-power panned sources at -0.8 .. 0.8: output panning index of each within +-0.05 of knee(1.5 x input index) | worst error 0.000: -0.73 -> -1.00 (-1.00), -0.32 -> -0.49 (-0.49), -0.00 -> -0.00 (-0.00), 0.32 -> 0.49 (0.49), 0.73 -> 1.00 (1.00) | pass |
+| P2-T24 | Image expander active (150 %, diffuse 50 %) on stereo input: (L + R) / 2 equals the input mid delayed by Lat within -120 dB | -148.3 dB | pass |
+| P2-T25 | Optimised velvet, all 16 variations: third-octave deviation <= 1.5 dB and \|corr\| <= 0.08 | worst over 16 variations: third-octave 1.82 dB, \|corr\| 0.005 (Random design: 18.30 dB, 0.368) | fallback (fallback: best found, third-octave <= 2.0 dB) |
+| P2-T26 | Structural changes (every Part 1 generator choice, double-tracker seed, listen) and a Velvet size sweep: RMS of every 10 ms window within 1.5 dB of the range spanned by time-aligned renders with the old and the new setting (side for generators, output for listen) | all 11 scenarios within 1.5 dB | pass |
+| P2-T27 | Latency mode Always Full, engine switched both ways during noise: no 10 ms window of output RMS more than 1 dB below the time-aligned renders with either engine; reported latency never changes | largest window drop 0.51 dB; latency constant | pass |
+| P2-T28 | Spectral-flux detector (Full engine): mean e <= 0.1 on steady noise and <= 0.05 on twoSource after 1.2 s; every click of clicks gives e >= 0.9 | mean e: noise 0.000, twoSource 0.012; weakest click 1.00 | pass |
+| P2-T29 | Soft bin ownership: T13 source A >= 7.5 dB and B >= 12 dB; T14 passes | Soft: L-R A -5.4 dB, B 14.5 dB, T14 passes; Hard: L-R A -6.1 dB, B 15.0 dB | fallback (fallback: Hard ownership is the default) |
+| P2-T36 | BS.1770 calibration: 997 Hz sine at -20 dBFS in one channel reads -23.0 LUFS within 0.2 LU; preset metrics table written | 48 kHz -23.01 LUFS, 44.1 kHz -23.01 LUFS; docs/PRESET_METRICS.md written | pass |
+| P2-T37 | Every generator awake (stereo input for the image expander), Full engine, every scope tap enabled: at most 8 % of real time at 48 kHz, 60 s of mix, median of 5 | 2.135 s for 60 s (3.56 % of real time) | pass |
+| R3 | Auto-width (research go/no-go): target 0.3 on the drum loop and on mix, ASW within +-0.05 of the target in 95 % of 100 ms windows after 3 s | drum loop 67.5 % of windows within +-0.05 (gain -1.9 dB), mix 95.8 % of windows within +-0.05 (gain -3.4 dB) | fallback (no-go on percussive material, shipped as experimental (docs/RESEARCH.md)) |

@@ -163,6 +163,21 @@ const Entry entries[] = {
   { "Switch designs with Variation set to a few different values.", "Přepínejte návrhy při několika různých variantách." },
   "Alary, Politis and Välimäki 2017; Schlecht et al. 2018" },
 
+{ "p.width_mode",
+  { "Width mode", "Režim šíře" },
+  { "Manual uses the Width knob as set; Auto steers it to keep the perceived width at a target.",
+    "Ručně použije knoflík Šíře, jak je nastaven; Automaticky jím pohybuje tak, aby vnímaná šíře zůstala na cíli." },
+  { "Auto-width listens to its own output with the virtual listener every 100 ms and slowly adjusts the width (2 s time constant, at most 3 dB per second). Quiet, narrow passages get more width and dense, wide ones less, so the image stays even. The correlation guard still applies.",
+    "Automatická šíře každých 100 ms poslouchá vlastní výstup virtuálním posluchačem a pomalu upravuje šíři (časová konstanta 2 s, nejvýš 3 dB za sekundu). Tiché úzké pasáže dostanou víc šíře, husté široké méně, takže obraz zůstane vyrovnaný. Hlídač korelace platí dál." },
+  { "Set Auto, then compare a sparse verse with a dense chorus.", "Zapněte Automaticky a porovnejte řídkou sloku s hustým refrénem." },
+  "Hidaka et al. 1995 (IACC); Brown and Duda 1998" },
+{ "p.asw_target",
+  { "Auto-width target", "Cíl automatické šíře" },
+  { "The perceived width that Auto mode holds (0 = point source).", "Vnímaná šíře, kterou automatický režim drží (0 = bodový zdroj)." },
+  { "Measured as on the perceived-width meter. On speakers values above about 0.55 cannot be reached because of crosstalk between the ears.",
+    "Měří se stejně jako na měřiči vnímané šíře. Na reproduktorech nelze kvůli přeslechu mezi ušima dosáhnout hodnot nad asi 0,55." },
+  { "0.3 is a natural, stable width.", "0,3 je přirozená, stabilní šíře." }, "" },
+
 // ---------------------------------------------------------------- spread
 { "card.spread",
   { "Spread", "Rozprostření (Spread)" },

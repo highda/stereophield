@@ -8,6 +8,7 @@ namespace sph::ui
 namespace
 {
 std::atomic<int> currentLanguage { 0 };
+std::atomic<bool> persistent { true };
 
 struct Pair
 {
@@ -56,6 +57,7 @@ const Pair shortTexts[] = {
     { "ui.guardlabel", "correlation guard", "hlídač korelace" },
     { "ui.freeze", "Freeze", "Zmrazit" },
     { "ui.span", "Span", "Rozsah" },
+    { "ui.lane", "Lane", "Stopa" },
     { "ui.target", "target", "cíl" },
     { "ui.achieved", "achieved", "dosaženo" },
     { "ui.monofold", "mono fold (dB)", "mono složení (dB)" },
@@ -69,8 +71,19 @@ const Pair shortTexts[] = {
     { "ui.step", "Step", "Krok" },
     { "ui.teach", "Teaching source", "Výukový zdroj" },
 
+    { "lang.en", "EN", "EN" },
+    { "lang.cs", "CZ", "CZ" },
+
+    // Flow view nodes
+    { "flow.input", "Input split", "Rozdělení vstupu" },
+    { "flow.analysis", "Analysis", "Analýza" },
+    { "flow.sidebus", "Side bus", "Boční sběrnice" },
+    { "flow.dry", "Dry mid (untouched)", "Suchý střed (nedotčen)" },
+    { "flow.output", "Output", "Výstup" },
+    { "flow.meters", "Meters", "Měřiče" },
+
     // Panels and cards
-    { "card.spread", "SPREAD", "ROZPROSTŘENÍ" },
+    { "card.spread", "SPREAD", "ROZPROSTŘ." },
     { "card.delay", "DELAY", "ZPOŽDĚNÍ" },
     { "card.mod", "MOD", "MODULACE" },
     { "card.velvet", "VELVET", "SAMET" },
@@ -93,14 +106,14 @@ const Pair shortTexts[] = {
     // Parameter captions (knobs and combos)
     { "cap.engine", "engine", "jádro" },
     { "cap.width", "WIDTH", "ŠÍŘE" },
-    { "cap.mid_blend", "mid blend", "příměs středu" },
+    { "cap.mid_blend", "mid blend", "příměs" },
     { "cap.bass_mono_hz", "bass mono", "mono basy" },
-    { "cap.band_xover_lo", "xover lo", "dělení dolní" },
-    { "cap.band_xover_hi", "xover hi", "dělení horní" },
+    { "cap.band_xover_lo", "xover lo", "dělení 1" },
+    { "cap.band_xover_hi", "xover hi", "dělení 2" },
     { "cap.band_low", "low", "basy" },
     { "cap.band_mid", "mid", "středy" },
     { "cap.band_high", "high", "výšky" },
-    { "cap.transient_duck", "duck", "útlum tr." },
+    { "cap.transient_duck", "duck", "útlum" },
     { "cap.guard", "guard", "hlídač" },
     { "cap.comp_mode", "comp", "komp." },
     { "cap.out_gain_db", "gain", "zisk" },
@@ -176,6 +189,10 @@ const Pair shortTexts[] = {
     { "cap.latency_mode", "latency", "latence" },
     { "cap.transient_mode", "detector", "detektor" },
     { "cap.pan_ownership", "bins", "biny" },
+    { "cap.width_mode", "width", "šíře" },
+    { "cap.asw_target", "target", "cíl" },
+    { "choice.width_mode.0", "Manual", "Ručně" },
+    { "choice.width_mode.1", "Auto (experimental)", "Automaticky (experimentální)" },
 
     // Choice items
     { "choice.engine.0", "Light", "Lehké" },
@@ -280,6 +297,8 @@ juce::String localNumber (const juce::String& text)
     return out;
 }
 
+void setPreferencesPersistent (bool on) noexcept { persistent.store (on); }
+
 static juce::File settingsFile()
 {
     return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
@@ -293,8 +312,41 @@ void loadLanguagePreference()
         setLanguage (xml->getIntAttribute ("language", 0) == 1 ? Language::Czech : Language::English);
 }
 
+int savedLanguagePreference()
+{
+    if (! persistent.load())
+        return 0;
+    if (auto xml = juce::XmlDocument::parse (settingsFile()))
+        return xml->getIntAttribute ("language", 0) == 1 ? 1 : 0;
+    return 0;
+}
+
+double savedSetting (const char* name, double fallback)
+{
+    if (! persistent.load())
+        return fallback;
+    if (auto xml = juce::XmlDocument::parse (settingsFile()))
+        return xml->getDoubleAttribute (name, fallback);
+    return fallback;
+}
+
+void saveSetting (const char* name, double value)
+{
+    if (! persistent.load())
+        return;
+    const auto f = settingsFile();
+    f.getParentDirectory().createDirectory();
+    juce::XmlElement xml ("STEREOPHIELD_SETTINGS");
+    if (auto old = juce::XmlDocument::parse (f))
+        xml = *old;
+    xml.setAttribute (name, value);
+    xml.writeTo (f);
+}
+
 void saveLanguagePreference()
 {
+    if (! persistent.load())
+        return;
     const auto f = settingsFile();
     f.getParentDirectory().createDirectory();
     juce::XmlElement xml ("STEREOPHIELD_SETTINGS");

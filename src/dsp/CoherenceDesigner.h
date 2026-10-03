@@ -36,7 +36,8 @@ public:
                        const float* mn2, const float* mx, std::complex<float>* s) noexcept;
 
     // Target coherence at a frequency for the current settings.
-    double target (double f) const noexcept;
+    double target (double f) const noexcept { return targetFor (params, f); }
+    static double targetFor (const Params& p, double f) noexcept;
 
     // Display and test hooks, per band.
     static double bandCentre (int b, double sampleRate) noexcept; // of the unmerged ERB grid

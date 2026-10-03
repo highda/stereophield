@@ -17,7 +17,7 @@ double StereoBands::bandCentre (int b) noexcept
 void StereoBands::prepare (double sampleRate, double smoothingSeconds)
 {
     fs = sampleRate;
-    fft = std::make_unique<juce::dsp::FFT> (12);
+    fft = std::make_unique<juce::dsp::FFT> (14);
     window.resize (frameSize);
     for (int i = 0; i < frameSize; ++i)
         window[(size_t) i] = (float) (0.5 - 0.5 * std::cos (2.0 * juce::MathConstants<double>::pi * i / frameSize));

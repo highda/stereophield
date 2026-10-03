@@ -1,90 +1,81 @@
 # stereophield
 
-A mono-to-stereo widening Audio Unit and Standalone app for macOS on Apple Silicon, built from classical signal processing only. By default its output sums back to the untouched input in mono: every algorithm adds to the side signal, and the mid is only delayed, never filtered.
+A mono-to-stereo widening Audio Unit and Standalone app for macOS on Apple Silicon, built from classical signal processing only. By default its output sums back to the untouched input in mono: every algorithm adds to the side signal, and the mid is only delayed, never filtered. The interface is in English and Czech and explains itself as you use it.
 
-The full specification is [docs/DESIGN.md](docs/DESIGN.md). Every choice the specification left open, every deviation and every tuning step is logged in [docs/DECISIONS.md](docs/DECISIONS.md). The measured value of every test is in [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+- Specifications: [docs/DESIGN.md](docs/DESIGN.md) (1.0) and [PART2_LEDGER.md](PART2_LEDGER.md) (2.0)
+- Decisions, deviations and tuning: [docs/DECISIONS.md](docs/DECISIONS.md)
+- Every measured value: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md); per-preset metrics: [docs/PRESET_METRICS.md](docs/PRESET_METRICS.md); research: [docs/RESEARCH.md](docs/RESEARCH.md)
 
-![stereophield, Full engine](docs/ui-full.png)
+![stereophield 2.0, Full engine](docs/ui-full.png)
 
 ## What it does
 
-Five generators each synthesise a stereo difference signal from one bus of the input. They run in parallel, and their sum goes through one side bus.
+Eight generators each synthesise a stereo difference signal; a ninth reshapes an existing stereo image. They run in parallel and sum into one side bus.
 
 | Generator | Technique |
 | --- | --- |
-| Spread | All-pass side signal: an integer delay (Lauridsen) or a cascade of second-order all-passes (Orban comb, shaped spread) |
-| Delay | Haas delay with an optional low-pass; mono-safe half-depth comb, or the authentic `L = x, R = delayed x` with mid blend |
-| Mod | Dimension-style anti-phase chorus, or a two-tap micro-pitch doubler (left up, right down) |
-| Velvet | Sparse velvet-noise decorrelator, a different sequence per side |
-| Pan map | Adaptive spectral panning: a static complementary split, stable per-partial positions, or whole sources grouped by harmonicity and onset (Full engine only) |
+| Spread | All-pass side signal: a delay (Lauridsen) or an all-pass cascade (Orban comb, shaped spread) |
+| Delay | Haas delay: a mono-safe half-depth comb, or the authentic dry/delayed pair with mid blend |
+| Mod | Dimension-style anti-phase chorus, or a micro-pitch doubler |
+| Velvet | Velvet-noise decorrelator, with offline-optimised sequences |
+| Pan map | Spectral panning by frequency, by partial, or by source (Full engine) |
+| Coherence designer | You choose how similar left and right are at each frequency, or take it from a virtual microphone pair (AB, XY, Blumlein, ORTF); mono-safe by construction (Full engine) |
+| Double-tracker | Two synthetic takes with humanised timing, pitch, level and tone drift (artificial double tracking) |
+| Room cues | Early reflections of a virtual room heard by a virtual ORTF pair, no reverb tail |
+| Image expander | For stereo input: moves each panned source outward and stops it at the speaker (Full engine) |
 
-Two analysis engines feed them:
+Two engines: **Light** has no latency; **Full** analyses the spectrum (tonal, noise and transient parts, partial tracking, source grouping, a spectral-flux transient detector) with one FFT frame of latency (2048 samples at 48 kHz). With latency mode **Always Full**, switching engine is seamless.
 
-- **Light**: no latency. Every generator reads the input mid, and a time-domain transient detector drives the duck.
-- **Full**: one FFT frame of latency (2048 samples up to 50 kHz, 4096 up to 100 kHz, 8192 above). An STFT median-filter split gives tonal, noise and transient buses, an ambience estimate moves decaying energy from tonal to noise, and partial tracking with source grouping drives the Pan map.
+The side bus has bass mono, three width bands, transient ducking and a correlation guard. Smart disable stops computing any module that cannot affect the output, without changing the sound. `mid_blend` at 0 keeps the mono sum identical to the input; above 0 the interface says "not mono-safe".
 
-The side bus applies bass mono (LR4 high-pass), three width bands, transient ducking, master width and a correlation guard that keeps side energy at or below mid energy. **Smart disable** stops computing any module with zero gain or silent input, without changing the output (T17) or the latency.
+29 factory presets cover the classic techniques, virtual microphone pairs, double-tracking, room cues and scenes. User presets are files in `~/Library/Audio/Presets/highda/stereophield`.
 
-`mid_blend` at 0 (the default) is mono-safe: `(L + R) / 2` equals the delayed input exactly, within float rounding (T2 measures -131.8 dB). Raising it adds each generator's mid component back, for the authentic, non-mono-safe sound; the interface then shows "not mono-safe".
+### Learning with it
 
-The 17 factory presets cover the classic techniques (Haas, Lauridsen, Orban, shaped spread, spectral split, Dimension chorus, micro-pitch, velvet) and four adaptive scenes. They appear as host programs and in the preset menu.
+- **Info panel** (the `i` button): hover anything to see what it does, a live explanation of the current value (for example the comb spacing of the current delay), how it works, something to try, and the background.
+- **Learn**: six guided tours (mid and side, mono compatibility, Haas and comb filters, decorrelation, spectral panning, smart disable). Apply loads a demonstration as one undoable step.
+- **Teaching sources** (the `...` menu): noise, two sources, a melody, a tone with a click, a drum loop, so you can learn without material.
+- **Views**: a live signal-flow diagram, scope lanes for every signal path with an activity timeline of smart disable, per-band correlation and mono-fold deviation, the coherence target and the achieved coherence, the pan map, a goniometer, and a perceived-width meter (a virtual listener on loudspeakers or headphones).
+- Undo and redo, A/B compare, zoom from 75 to 150 %, keyboard access, and screen-reader names in both languages.
 
-## Requirements
+## Requirements, build and test
 
-- macOS 12 or later on Apple Silicon (arm64 only)
-- Command Line Tools (`xcode-select --install`); full Xcode is not needed
-- CMake 3.22 or newer, and Ninja (or Unix Makefiles)
-
-JUCE 9.0.3 and Catch2 v3.16.0 are fetched by CMake on the first configure.
-
-## Build, test and measure
+- macOS 12 or later on arm64; Command Line Tools (`xcode-select --install`); CMake 3.22 or newer; Ninja
+- JUCE 9.0.3 and Catch2 v3.16.0 are fetched by CMake.
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j 8
 ctest --test-dir build --output-on-failure
-./build/sph_measure --all --out docs/MEASUREMENTS.md --renders build/renders
+./build/sph_measure --all --out docs/MEASUREMENTS.md     # every measurement, plus interface snapshots
+./build/sph_measure --report build/report                # listening report: open build/report/index.html
 ```
 
-- `sph_tests` holds the unit tests of `src/dsp/` (building blocks, T1, T7 to T12).
-- `sph_plugin_tests` drives the full `AudioProcessor` offline (T2 to T6 and T13 to T28, parameter table, presets, all six sample rates, engine switching).
-- `sph_measure` runs the same measurements, rewrites `docs/MEASUREMENTS.md`, regenerates `docs/ui.png` and `docs/ui-full.png`, and renders every factory preset on the `mix` test signal to `build/renders/*.wav` for listening. `sph_measure T13 T14` runs selected tests only.
-
-Timing tests (T18, T25) are only meaningful in a Release build.
-
-## Install and validate
-
-The build copies the Audio Unit to `~/Library/Audio/Plug-Ins/Components/stereophield.component` (ad-hoc signed). Validate it with:
+The build installs the Audio Unit to `~/Library/Audio/Plug-Ins/Components/stereophield.component`. Validate it with:
 
 ```bash
 killall -9 AudioComponentRegistrar 2>/dev/null || true
 auval -v aufx Stph Hgda
 ```
 
-The output must end with `AU VALIDATION SUCCEEDED`. The Standalone app is at `build/stereophield_artefacts/Release/Standalone/stereophield.app`. It asks for microphone access the first time it opens an audio input.
+The Standalone app is `build/stereophield_artefacts/Release/Standalone/stereophield.app`.
 
 | Item | Value |
 | --- | --- |
-| Type, subtype, manufacturer | `aufx`, `Stph`, `Hgda` |
-| Bundle identifier | `com.highda.stereophield` |
-| Channels | mono in or stereo in, stereo out |
-| Latency at 48 kHz | Light 0 samples; Full 2048 samples (42.7 ms) |
-| CPU, 60 s at 48 kHz, M3 | preset 16 (Full engine) about 2.5 % of real time; preset 1 about 0.16 % |
+| Type, subtype, manufacturer | `aufx`, `Stph`, `Hgda`, version 2.0.0 |
+| Channels | mono or stereo in, stereo out |
+| Latency at 48 kHz | Light 0; Full 2048 samples (42.7 ms); Always Full 2048 in both engines |
+| CPU at 48 kHz, M3 | preset 16 about 2.6 % of real time; every generator, Full engine and every view about 3.6 % |
+| Sessions from 1.0 | load and render bit-identically |
 
-## Repository layout
+---
 
-```text
-src/dsp/       all signal processing (Core runs the whole graph from a Params struct)
-src/plugin/    AudioProcessor, parameters, presets
-src/ui/        editor, look and feel, displays
-tests/unit/    module tests (Catch2)
-tests/plugin/  full-processor tests (Catch2)
-tests/common/  measurements shared by the tests and sph_measure
-tests/signals/ generated test signals
-tests/measure/ sph_measure
-docs/          specification, decisions, measurements, interface snapshots
-```
+## Česky
 
-## Licence
+stereophield je plugin Audio Unit a samostatná aplikace pro macOS na Apple Silicon, která z mono signálu dělá stereo pouze klasickým zpracováním signálu. Ve výchozím stavu se jeho výstup v mono sečte zpět přesně na nedotčený vstup: všechny algoritmy přidávají jen do boční složky a střed se pouze zpožďuje, nikdy nefiltruje. Rozhraní je v češtině a angličtině (přepínač EN | CZ v záhlaví) a samo vysvětluje, co děláte.
 
-JUCE has its own licence terms for distributed products; see the JUCE repository. The JUCE splash settings are the defaults.
+**Co obsahuje.** Osm generátorů syntetizuje rozdílový stereo signál: rozprostření (Lauridsen, Orbanův hřeben), Haasovo zpoždění, chorus a mikrotransponování, sametový šum, panoramatická mapa, **návrhář koherence** (zvolíte, jak podobné mají být kanály na každém kmitočtu, nebo vezmete křivku virtuálního mikrofonního páru AB, XY, Blumlein či ORTF), **zdvojovač** (dva syntetické „výkony“ s lidským kolísáním) a **prostorové odrazy** (časné odrazy virtuální místnosti bez dozvuku). Devátý, **rozšíření stereobáze**, posouvá zdroje stereo nahrávky ven až k reproduktorům.
+
+**Učení.** Informační panel (tlačítko `i`) ukazuje při najetí myší co prvek dělá, živé vysvětlení současné hodnoty, jak to funguje, co vyzkoušet a zdroje. Tlačítko **Učení** nabízí šest prohlídek s průvodcem. V nabídce `...` jsou výukové zdroje (šum, dva zdroje, melodie, tón s luskem, bicí smyčka), zvětšení rozhraní a ukládání vlastních předvoleb. Zobrazení Tok signálu, Průběhy, Pásma, Koherence a Pan. mapa ukazují, co se děje uvnitř; měřič vnímané šíře simuluje posluchače u reproduktorů nebo ve sluchátkách.
+
+**Sestavení** je stejné jako výše; plugin se nainstaluje do `~/Library/Audio/Plug-Ins/Components`. Projekty z verze 1.0 se načtou a zní bitově stejně.

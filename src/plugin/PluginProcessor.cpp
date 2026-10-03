@@ -3,6 +3,7 @@
 #include "plugin/Presets.h"
 #include "dsp/TestSignals.h"
 #include "ui/PluginEditor.h"
+#include "ui/Strings.h"
 
 namespace sph
 {
@@ -13,6 +14,7 @@ StereophieldProcessor::StereophieldProcessor()
       apvts (*this, nullptr, "stereophield", createParameterLayout()),
       reader (apvts)
 {
+    language = ui::savedLanguagePreference();
 }
 
 StereophieldProcessor::~StereophieldProcessor()

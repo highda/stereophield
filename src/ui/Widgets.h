@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/Strings.h"
 #include "ui/Style.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -11,80 +12,111 @@ namespace sph::ui
 {
 using APVTS = juce::AudioProcessorValueTreeState;
 
-// A rotary knob with its name above and the value (with units) below, bound
-// to one parameter. Double-click returns to the default.
-class Knob : public juce::Component
+// Every widget carries a help key (its info-panel entry) as the component
+// property "help", and re-reads its texts in localise().
+void setHelpKey (juce::Component& c, const juce::String& key);
+juce::String helpKeyOf (const juce::Component& c);
+// First sentence of a help entry, for tooltips.
+juce::String shortHelp (const juce::String& key);
+
+class Localisable
 {
 public:
-    Knob (APVTS& state, const juce::String& paramId, const juce::String& name, bool large = false);
+    virtual ~Localisable() = default;
+    virtual void localise() = 0;
+};
+
+// A rotary knob with its caption above and its value (with units) below.
+class Knob : public juce::Component, public Localisable
+{
+public:
+    Knob (APVTS& state, const juce::String& paramId, bool large = false);
     void resized() override;
     void paint (juce::Graphics&) override;
+    void localise() override;
     juce::Slider& slider() noexcept { return knob; }
 
 private:
     juce::Slider knob;
-    juce::String title;
+    juce::String id;
     bool big;
     std::unique_ptr<APVTS::SliderAttachment> attachment;
+    std::function<juce::String (double)> baseText;
 };
 
-// A combo box with a small caption, bound to a choice parameter.
-class Choice : public juce::Component
+// A combo box with a caption, bound to a choice parameter.
+class Choice : public juce::Component, public Localisable
 {
 public:
-    Choice (APVTS& state, const juce::String& paramId, const juce::String& caption);
+    Choice (APVTS& state, const juce::String& paramId, bool showCaption = true);
     void resized() override;
     void paint (juce::Graphics&) override;
+    void localise() override;
     juce::ComboBox& box() noexcept { return combo; }
 
 private:
+    juce::String itemKey (int index) const;
     juce::ComboBox combo;
-    juce::String caption;
+    juce::String id;
+    bool caption;
+    int items = 0;
     std::unique_ptr<APVTS::ComboBoxAttachment> attachment;
 };
 
-// A row of connected buttons that selects one item of a choice parameter.
-class Segmented : public juce::Component
+// Connected buttons selecting one item of a choice parameter, or (with no
+// parameter) calling onSelect.
+class Segmented : public juce::Component, public Localisable
 {
 public:
-    Segmented (APVTS& state, const juce::String& paramId, const juce::StringArray& labels);
+    Segmented (APVTS* state, const juce::String& paramId, std::vector<juce::String> labelKeys);
     ~Segmented() override;
     void resized() override;
+    void localise() override;
+    void select (int index);
+    int selected() const noexcept { return current; }
+    std::function<void (int)> onSelect;
 
 private:
-    void select (int index);
     juce::OwnedArray<juce::TextButton> buttons;
+    std::vector<juce::String> keys;
     std::unique_ptr<juce::ParameterAttachment> attachment;
-    juce::RangedAudioParameter* param = nullptr;
+    int current = 0;
 };
 
 // A toggle button bound to a two-state parameter.
-class Toggle : public juce::Component
+class Toggle : public juce::Component, public Localisable
 {
 public:
-    Toggle (APVTS& state, const juce::String& paramId, const juce::String& text);
+    Toggle (APVTS& state, const juce::String& paramId, const juce::String& labelKey);
     void resized() override { button.setBounds (getLocalBounds()); }
+    void localise() override;
     juce::TextButton& get() noexcept { return button; }
 
 private:
     juce::TextButton button;
+    juce::String key;
     std::unique_ptr<APVTS::ButtonAttachment> attachment;
 };
 
-// A rounded panel with a title.
-class Panel : public juce::Component
+// A rounded panel with a title and an optional awake indicator.
+class Panel : public juce::Component, public Localisable
 {
 public:
-    explicit Panel (const juce::String& title);
+    explicit Panel (const juce::String& titleKey);
     void paint (juce::Graphics&) override;
-    // Area below the title.
+    void localise() override { repaint(); }
     juce::Rectangle<int> content() const;
-    // A small status dot in the title row: lit when awake, dim when asleep.
     void showIndicator (bool show) { indicator = show; }
     void setAwake (bool awake);
+    void setSelected (bool s) { if (s != selected) { selected = s; repaint(); } }
+    std::function<void()> onClick;
+    void mouseUp (const juce::MouseEvent&) override { if (onClick) onClick(); }
 
 private:
-    juce::String title;
-    bool indicator = false, awake = true;
+    juce::String key;
+    bool indicator = false, awake = true, selected = false;
 };
+
+// Calls localise() on every Localisable in a component tree.
+void localiseTree (juce::Component& root);
 } // namespace sph::ui

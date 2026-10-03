@@ -25,6 +25,10 @@ Result t25Performance();
 Result t26PresetSanity();
 Result t27Bypass();
 Result t28InterfaceSnapshot();
+Result p2t11ViewSnapshots();
+Result p2t13MonoFoldMeter();
+Result p2t37WholeBudget();
+Result r3AutoWidth();
 
 // Part 2.
 Result p2t14PerceivedWidth();

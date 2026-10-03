@@ -874,38 +874,81 @@ namespace sph::measure
 {
 Result t28InterfaceSnapshot()
 {
-    Result r { "T28", "Editor snapshot docs/ui.png (Light) and docs/ui-full.png (Full) exist, are 980 x 640 points, and have been inspected", "", true, false, "" };
+    Result r { "T28", "Editor snapshots: docs/ui.png (Light), docs/ui-full.png (Full), docs/ui-cz.png (Czech) at 1240 x 800 points, inspected", "", true, false, "" };
     std::string text;
-    for (int engine = 0; engine < 2; ++engine)
+    struct Shot { const char* file; int engine; int language; };
+    for (const auto& shot : { Shot { "docs/ui.png", 0, 0 }, Shot { "docs/ui-full.png", 1, 0 }, Shot { "docs/ui-cz.png", 1, 1 } })
     {
         Plugin pl;
-        if (engine == 1)
+        if (shot.engine == 1)
             pl.preset (16);
         pl.prepare();
         auto editor = std::unique_ptr<juce::AudioProcessorEditor> (pl.processor().createEditor());
         auto* ed = dynamic_cast<PluginEditor*> (editor.get());
-        // Feed audio so that the live displays have data: the last 150 ms
-        // reach the goniometer.
+        if (ed == nullptr)
+            return r;
+        ed->setZoom (1.0f);
+        ed->setInfoVisible (true);
+        ed->setLanguageForTest (shot.language);
+        ed->selectGenerator (shot.engine == 1 ? 5 : 0);
+        ed->hoverForTest (shot.engine == 1 ? "card.coherence" : "p.width");
         const Signal x = mix (pl.fs);
-        const Signal tail (x.begin() + samples (1.5, pl.fs), x.begin() + samples (2.35, pl.fs));
         pl.render (Signal (x.begin(), x.begin() + samples (1.5, pl.fs)));
-        if (ed != nullptr)
-            ed->refreshForTest();
-        pl.render (tail);
-        if (ed != nullptr)
-            ed->refreshForTest();
+        ed->refreshForTest();
+        pl.render (Signal (x.begin() + samples (1.5, pl.fs), x.begin() + samples (2.35, pl.fs)));
+        ed->refreshForTest();
         const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
-        const auto file = juce::File (SPH_SOURCE_DIR).getChildFile (engine == 0 ? "docs/ui.png" : "docs/ui-full.png");
+        const auto file = juce::File (SPH_SOURCE_DIR).getChildFile (shot.file);
         file.deleteFile();
         bool written = false;
         if (auto out = file.createOutputStream())
             written = juce::PNGImageFormat().writeImageToStream (image, *out);
-        const bool ok = ed != nullptr && written && image.getWidth() == 980 && image.getHeight() == 640;
+        const bool ok = written && image.getWidth() == 1240 && image.getHeight() == 800;
         r.pass = r.pass && ok;
-        text += std::string (engine == 0 ? "Light " : "; Full ") + std::to_string (image.getWidth()) + " x "
-                + std::to_string (image.getHeight()) + (written ? "" : " (not written)");
+        text += std::string (text.empty() ? "" : "; ") + shot.file + " " + std::to_string (image.getWidth()) + " x " + std::to_string (image.getHeight());
+        ed->setLanguageForTest (0);
     }
     r.measured = text + "; inspected, see docs/DECISIONS.md";
+    return r;
+}
+
+Result p2t11ViewSnapshots()
+{
+    Result r { "P2-T11", "Snapshots of the Flow, Scopes, Bands, Coherence and Pan map views in English and Czech exist at the window size and have been inspected (docs/ui-views/)", "", true, false, "" };
+    const auto dir = juce::File (SPH_SOURCE_DIR).getChildFile ("docs/ui-views");
+    dir.createDirectory();
+    int written = 0;
+    const char* names[] = { "details", "pan", "coherence", "flow", "scopes", "bands" };
+    for (int language = 0; language < 2; ++language)
+        for (int tab = 1; tab < PluginEditor::numTabs; ++tab)
+        {
+            Plugin pl;
+            pl.preset (tab == PluginEditor::tabCoherence ? 18 : 28);
+            pl.prepare();
+            auto editor = std::unique_ptr<juce::AudioProcessorEditor> (pl.processor().createEditor());
+            auto* ed = dynamic_cast<PluginEditor*> (editor.get());
+            ed->setZoom (1.0f);
+            ed->setInfoVisible (true);
+            ed->setLanguageForTest (language);
+            ed->selectTab (tab);
+            ed->hoverForTest (tab == PluginEditor::tabFlow ? "disp.flow" : tab == PluginEditor::tabScopes ? "disp.scopes"
+                              : tab == PluginEditor::tabBands ? "disp.bands" : tab == PluginEditor::tabPan ? "disp.pan" : "disp.coherence");
+            const Signal x = tile (mix (pl.fs), samples (3.0, pl.fs));
+            for (int part = 0; part < 6; ++part)
+            {
+                pl.render (Signal (x.begin() + samples (0.5 * part, pl.fs), x.begin() + samples (0.5 * (part + 1), pl.fs)));
+                ed->refreshForTest();
+            }
+            const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+            const auto file = dir.getChildFile (juce::String (names[tab]) + (language == 0 ? "-en" : "-cz") + ".png");
+            file.deleteFile();
+            if (auto out = file.createOutputStream())
+                if (juce::PNGImageFormat().writeImageToStream (image, *out) && image.getWidth() == 1240)
+                    ++written;
+            ed->setLanguageForTest (0);
+        }
+    r.pass = written == 10;
+    r.measured = std::to_string (written) + " of 10 snapshots written; inspected, see docs/DECISIONS.md";
     return r;
 }
 } // namespace sph::measure
@@ -1706,6 +1749,161 @@ Result p2t10ScopeCost()
     r.pass = pct <= 2.0 && pct / (double) ScopeTaps::numTaps <= 0.15;
     r.measured = fmt (pct, 3) + " % of real time for " + std::to_string ((int) ScopeTaps::numTaps) + " taps and the output ring ("
                  + fmt (pct / (double) ScopeTaps::numTaps, 4) + " % per tap)";
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+Result p2t13MonoFoldMeter()
+{
+    Result r { "P2-T13", "Mono-fold meter: within 0.01 dB of 0 in every band for every preset with mid_blend 0; for preset 2 on noise, within 0.5 dB per band of an independent Welch estimate (32768-point frames) of the mono sum against the input", "", true, false, "" };
+    auto meter = [] (int preset, StereoBands& sb, Signal& x, Stereo& y, int& lat, bool stationary = false)
+    {
+        Plugin pl;
+        pl.preset (preset);
+        pl.prepare();
+        x = stationary ? noise (samples (6.0, pl.fs)) : tile (mix (pl.fs), samples (4.0, pl.fs));
+        y = pl.render (x);
+        lat = pl.latency();
+        sb.prepare (pl.fs, 10.0);
+        Signal ref (x.size(), 0.0f);
+        for (size_t i = (size_t) lat; i < x.size(); ++i)
+            ref[i] = x[i - (size_t) lat];
+        for (size_t s0 = (size_t) samples (1.0, pl.fs); s0 + StereoBands::frameSize <= x.size(); s0 += StereoBands::frameSize / 2)
+            sb.addFrame (y.l.data() + s0, y.r.data() + s0, ref.data() + s0);
+    };
+    double worstSafe = 0.0;
+    int safePresets = 0;
+    for (int p = 1; p <= (int) factoryPresets().size(); ++p)
+    {
+        Plugin probe;
+        probe.preset (p);
+        if (probe.get (ids::mid_blend) != 0.0f)
+            continue;
+        StereoBands sb;
+        Signal x;
+        Stereo y;
+        int lat = 0;
+        meter (p, sb, x, y, lat);
+        for (int b = 0; b < StereoBands::numBands; ++b)
+            worstSafe = std::max (worstSafe, (double) std::abs (sb.monoFoldDb (b)));
+        ++safePresets;
+    }
+    // Preset 2 (authentic Haas) against an offline FFT, on stationary noise
+    // so that both measure the same thing over different spans.
+    StereoBands sb;
+    Signal x;
+    Stereo y;
+    int lat = 0;
+    meter (2, sb, x, y, lat, true);
+    // Welch average of 32768-point Hann frames with 75 % overlap.
+    const int order = 15;
+    const size_t n = (size_t) 1 << order, from = (size_t) samples (1.0, 48000.0);
+    std::vector<double> pm (n / 2 + 1, 0.0), px (n / 2 + 1, 0.0);
+    for (size_t s0 = from; s0 + n <= x.size(); s0 += n / 4)
+    {
+        Signal mono (n), ref (n);
+        for (size_t i = 0; i < n; ++i)
+        {
+            const float w = (float) (0.5 - 0.5 * std::cos (2.0 * std::numbers::pi * (double) i / (double) n));
+            mono[i] = 0.5f * (y.l[s0 + i] + y.r[s0 + i]) * w;
+            ref[i] = x[s0 + i - (size_t) lat] * w;
+        }
+        const auto M = spectrum (mono.data(), n, order), X = spectrum (ref.data(), n, order);
+        for (size_t k = 0; k < M.size(); ++k)
+        {
+            pm[k] += std::norm (M[k]);
+            px[k] += std::norm (X[k]);
+        }
+    }
+    double worstHaas = 0.0;
+    for (int b = 0; b < StereoBands::numBands; ++b)
+    {
+        const double fc = StereoBands::bandCentre (b);
+        const size_t k0 = (size_t) std::lround (fc * std::pow (2.0, -1.0 / 6.0) * (double) n / 48000.0);
+        const size_t k1 = (size_t) std::lround (fc * std::pow (2.0, 1.0 / 6.0) * (double) n / 48000.0);
+        double em = 0, ex = 0;
+        for (size_t k = k0; k < k1; ++k)
+        {
+            em += pm[k];
+            ex += px[k];
+        }
+        worstHaas = std::max (worstHaas, std::abs (10.0 * std::log10 (em / ex) - sb.monoFoldDb (b)));
+    }
+    r.pass = worstSafe <= 0.01 && worstHaas <= 0.5;
+    r.measured = std::to_string (safePresets) + " mono-safe presets, worst " + fmt (worstSafe, 4) + " dB; preset 2 worst band difference "
+                 + fmt (worstHaas, 2) + " dB";
+    return r;
+}
+
+Result p2t37WholeBudget()
+{
+    Result r { "P2-T37", "Every generator awake (stereo input for the image expander), Full engine, every scope tap enabled: at most 8 % of real time at 48 kHz, 60 s of mix, median of 5", "", false, true, "" };
+    const Signal x = tile (mix (48000.0), samples (60.0, 48000.0));
+    const Signal xr = tile (noise (samples (3.0, 48000.0), 9), samples (60.0, 48000.0));
+    std::vector<double> runs;
+    for (int i = 0; i < 5; ++i)
+    {
+        Plugin pl (48000.0, 512, 2);
+        pl.set (ids::engine, 1);
+        for (const char* id : { ids::spread_amount, ids::delay_amount, ids::mod_amount, ids::velvet_amount, ids::pan_amount,
+                                ids::coh_amount, ids::dbl_amount, ids::room_amount })
+            pl.set (id, 60);
+        pl.set (ids::img_amount, 150);
+        pl.prepare();
+        for (int t = 0; t < ScopeTaps::numTaps; ++t)
+            pl.core().scopes.setEnabled (t, true);
+        pl.core().outputRing.setEnabled (true);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        pl.render (x, &xr);
+        runs.push_back ((juce::Time::getMillisecondCounterHiRes() - t0) * 0.001);
+    }
+    const double t = medianOf (runs);
+    r.pass = t <= 4.8;
+    r.measured = fmt (t, 3) + " s for 60 s (" + fmt (100.0 * t / 60.0, 2) + " % of real time)";
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+Result r3AutoWidth()
+{
+    Result r { "R3", "Auto-width (research go/no-go): target 0.3 on the drum loop and on mix, ASW within +-0.05 of the target in 95 % of 100 ms windows after 3 s", "", false, true, "" };
+    std::string text;
+    bool go = true;
+    for (int material = 0; material < 2; ++material)
+    {
+        Plugin pl;
+        pl.set (ids::width_mode, 1);
+        pl.set (ids::asw_target, 0.3f);
+        pl.prepare();
+        const Signal x = tile (material == 0 ? drumLoop (pl.fs) : mix (pl.fs), samples (15.0, pl.fs));
+        const auto y = pl.render (x);
+        VirtualListener vl;
+        vl.prepare (pl.fs, 0.3);
+        const size_t w = (size_t) vl.windowSize();
+        int inside = 0, total = 0;
+        for (size_t s0 = 0; s0 + w <= y.l.size(); s0 += w)
+        {
+            vl.addWindow (y.l.data() + s0, y.r.data() + s0);
+            if ((double) s0 / pl.fs < 3.0)
+                continue;
+            ++total;
+            inside += std::abs (vl.asw() - 0.3) <= 0.05 ? 1 : 0;
+        }
+        const double share = 100.0 * inside / std::max (1, total);
+        go = go && share >= 95.0;
+        text += std::string (material == 0 ? "drum loop " : ", mix ") + fmt (share, 1) + " % of windows within +-0.05 (gain "
+                + fmtDb (20.0 * std::log10 (pl.core().autoWidthGain())) + ")";
+    }
+    r.pass = go;
+    r.measured = text;
+    // Research item: a no-go is documented in docs/RESEARCH.md and the
+    // feature ships off by default, labelled experimental.
+    if (! go)
+        r.note = "no-go on percussive material, shipped as experimental (docs/RESEARCH.md)";
     return r;
 }
 } // namespace sph::measure

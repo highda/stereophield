@@ -18,7 +18,7 @@ class StereoBands
 {
 public:
     static constexpr int numBands = 24;
-    static constexpr int frameSize = 4096;
+    static constexpr int frameSize = 16384; // 2.9 Hz bins at 48 kHz: the lowest third-octaves span several bins
 
     StereoBands();
     ~StereoBands();

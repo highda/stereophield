@@ -16,6 +16,7 @@
 #include "dsp/SleepController.h"
 #include "dsp/Spread.h"
 #include "dsp/TransientDetector.h"
+#include "dsp/VirtualListener.h"
 #include "dsp/Velvet.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -94,6 +95,12 @@ public:
     bool expanderActive() const noexcept { return expanderOn; }
     // Mean and maximum of the transient envelope e(n) over the last chunk.
     float lastEnvelopeMean() const noexcept { return envMean; }
+    // Auto-width (PART2_LEDGER.md R3): the measured perceived width and the
+    // gain applied to the width.
+    float autoWidthAsw() const noexcept { return autoAsw.load (std::memory_order_relaxed); }
+    float autoWidthGain() const noexcept { return (float) autoGain; }
+    // Auto-width controller: time constant (s) and slew limit (dB/s).
+    inline static double autoTau = 2.0, autoRate = 3.0;
     float lastEnvelopeMax() const noexcept { return envMax; }
     const SideBus& sideBus() const noexcept { return side; }
     const Analysis& analysis() const noexcept { return analyser; }
@@ -160,6 +167,12 @@ private:
     std::vector<float> fluxMarkers, ratioRing, ratio;
     int64_t inputTime = 0;
     float envMean = 0.0f, envMax = 0.0f;
+    VirtualListener autoListener;
+    std::vector<float> autoL, autoR;
+    int autoFill = 0;
+    double autoGain = 1.0;
+    std::atomic<float> autoAsw { 0.0f };
+    void autoWidth (const float* l, const float* r, int n) noexcept;
     double fluxEnvelope = 0.0, fluxHold = 0.0;
     bool expanderOn = false;
     std::array<Slot, numGenerators> slots;
