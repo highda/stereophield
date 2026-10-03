@@ -17,3 +17,11 @@ Dated list of choices not dictated by `DESIGN.md`, and every fallback applied.
 - `sph_tests`, `sph_plugin_tests` and `sph_measure` are created with `juce_add_console_app` so they get JUCE's standard definitions, and are written to `build/` directly.
 - Tests of the full `AudioProcessor` live in `tests/plugin/` (the layout in section 3.3 lists only `tests/unit/`).
 - Catch2 tests are registered per test case with `catch_discover_tests`.
+
+### Phase 1
+
+- `Biquad` is a double-precision transposed direct form II section whose coefficients come from `juce::dsp::IIR::ArrayCoefficients<double>`. These compute the same values as `IIR::Coefficients<float>::makeAllPass` and friends but return a `std::array` instead of a heap-allocated reference-counted object, so coefficients can be recomputed on the audio thread (section 5.1 rule 1).
+- `DelayLine` rounds its buffer up to a power of two; `push` then `read(0)` returns the sample just pushed. Lagrange reads use taps `k .. k+3` with the read point in `[1, 2)` where possible; reads are clamped to `[0, maxDelay]`.
+- `Stft` synthesis scale is computed as `2 * H / N` (0.5 for `H = N / 4`). JUCE's real inverse transform divides by `N` (the vDSP back end used on macOS too); T1 confirms unity gain at all three rates.
+- Test signals: `decayTone` amplitude 0.25; `melody` notes at 0.32 s spacing (300 ms note plus 20 ms gap) starting at 0, peak-normalised to 0.5; `toneClick` is 2 s long and the -18 dBFS level is the sine's peak; `clicks` start at n = 0; fades are raised cosine; `mix` is 3 s long and longer renders tile it; `noise at -30 dB` and `clicks at -12 dB` are gains applied to those signals.
+- Measurements live in `tests/common/` and are shared: Catch2 tests assert on them and `sph_measure` writes the same values to `docs/MEASUREMENTS.md`. Levels in dB are RMS ratios to the input over the measured span.

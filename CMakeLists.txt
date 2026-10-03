@@ -90,9 +90,15 @@ include(CTest)
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 
+# Measurements shared by the Catch2 tests and sph_measure. The Dsp set needs
+# only sph_dsp; the Plugin set needs the full AudioProcessor.
+file(GLOB SPH_MEASURE_DSP CONFIGURE_DEPENDS
+    tests/common/Measure.cpp tests/common/MeasureDsp*.cpp)
+file(GLOB SPH_MEASURE_PLUGIN CONFIGURE_DEPENDS tests/common/MeasurePlugin*.cpp)
+
 juce_add_console_app(sph_tests PRODUCT_NAME "sph_tests")
 file(GLOB SPH_UNIT_TESTS CONFIGURE_DEPENDS tests/unit/*.cpp)
-target_sources(sph_tests PRIVATE ${SPH_UNIT_TESTS})
+target_sources(sph_tests PRIVATE ${SPH_UNIT_TESTS} ${SPH_MEASURE_DSP})
 target_include_directories(sph_tests PRIVATE tests)
 target_compile_options(sph_tests PRIVATE ${SPH_WARNINGS})
 target_link_libraries(sph_tests PRIVATE
@@ -101,7 +107,7 @@ catch_discover_tests(sph_tests)
 
 juce_add_console_app(sph_plugin_tests PRODUCT_NAME "sph_plugin_tests")
 file(GLOB SPH_PLUGIN_TESTS CONFIGURE_DEPENDS tests/plugin/*.cpp)
-target_sources(sph_plugin_tests PRIVATE ${SPH_PLUGIN_TESTS})
+target_sources(sph_plugin_tests PRIVATE ${SPH_PLUGIN_TESTS} ${SPH_MEASURE_DSP} ${SPH_MEASURE_PLUGIN})
 target_include_directories(sph_plugin_tests PRIVATE tests)
 target_compile_definitions(sph_plugin_tests PRIVATE
     SPH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -111,7 +117,7 @@ target_link_libraries(sph_plugin_tests PRIVATE
 catch_discover_tests(sph_plugin_tests)
 
 juce_add_console_app(sph_measure PRODUCT_NAME "sph_measure")
-target_sources(sph_measure PRIVATE tests/measure/main.cpp)
+target_sources(sph_measure PRIVATE tests/measure/main.cpp ${SPH_MEASURE_DSP} ${SPH_MEASURE_PLUGIN})
 target_include_directories(sph_measure PRIVATE tests)
 target_compile_options(sph_measure PRIVATE ${SPH_WARNINGS})
 target_link_libraries(sph_measure PRIVATE
