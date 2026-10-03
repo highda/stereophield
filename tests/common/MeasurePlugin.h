@@ -24,4 +24,5 @@ Result t24AuValidation();
 Result t25Performance();
 Result t26PresetSanity();
 Result t27Bypass();
+Result t28InterfaceSnapshot();
 } // namespace sph::measure

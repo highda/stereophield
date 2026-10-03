@@ -1,6 +1,7 @@
 #include "plugin/PluginProcessor.h"
 
 #include "plugin/Presets.h"
+#include "ui/PluginEditor.h"
 
 namespace sph
 {
@@ -109,7 +110,7 @@ juce::AudioProcessorParameter* StereophieldProcessor::getBypassParameter() const
 
 juce::AudioProcessorEditor* StereophieldProcessor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor (*this);
+    return new PluginEditor (*this);
 }
 } // namespace sph
 

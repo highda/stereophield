@@ -35,6 +35,7 @@ const std::vector<Entry>& registry()
         { "T25", t25Performance },
         { "T26", t26PresetSanity },
         { "T27", t27Bypass },
+        { "T28", t28InterfaceSnapshot },
     };
     return entries;
 }

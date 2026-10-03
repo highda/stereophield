@@ -119,6 +119,7 @@ catch_discover_tests(sph_plugin_tests)
 juce_add_console_app(sph_measure PRODUCT_NAME "sph_measure")
 target_sources(sph_measure PRIVATE tests/measure/main.cpp ${SPH_MEASURE_DSP} ${SPH_MEASURE_PLUGIN})
 target_include_directories(sph_measure PRIVATE tests)
+target_compile_definitions(sph_measure PRIVATE SPH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_compile_options(sph_measure PRIVATE ${SPH_WARNINGS})
 target_link_libraries(sph_measure PRIVATE
     sph_plugin_code juce::juce_recommended_config_flags)

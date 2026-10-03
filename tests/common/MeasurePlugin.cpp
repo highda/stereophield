@@ -2,6 +2,7 @@
 
 #include "common/Render.h"
 #include "common/SignalMath.h"
+#include "ui/PluginEditor.h"
 
 #include <numbers>
 
@@ -853,6 +854,46 @@ Result t27Bypass()
         text += std::string (engine == 0 ? "Light " : ", Full ") + fmtDb (worst) + " (Lat " + std::to_string (lat) + ")";
     }
     r.measured = text;
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+Result t28InterfaceSnapshot()
+{
+    Result r { "T28", "Editor snapshot docs/ui.png (Light) and docs/ui-full.png (Full) exist, are 980 x 640 points, and have been inspected", "", true, false, "" };
+    std::string text;
+    for (int engine = 0; engine < 2; ++engine)
+    {
+        Plugin pl;
+        if (engine == 1)
+            pl.preset (16);
+        pl.prepare();
+        auto editor = std::unique_ptr<juce::AudioProcessorEditor> (pl.processor().createEditor());
+        auto* ed = dynamic_cast<PluginEditor*> (editor.get());
+        // Feed audio so that the live displays have data: the last 150 ms
+        // reach the goniometer.
+        const Signal x = mix (pl.fs);
+        const Signal tail (x.begin() + samples (1.5, pl.fs), x.begin() + samples (2.35, pl.fs));
+        pl.render (Signal (x.begin(), x.begin() + samples (1.5, pl.fs)));
+        if (ed != nullptr)
+            ed->refreshForTest();
+        pl.render (tail);
+        if (ed != nullptr)
+            ed->refreshForTest();
+        const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+        const auto file = juce::File (SPH_SOURCE_DIR).getChildFile (engine == 0 ? "docs/ui.png" : "docs/ui-full.png");
+        file.deleteFile();
+        bool written = false;
+        if (auto out = file.createOutputStream())
+            written = juce::PNGImageFormat().writeImageToStream (image, *out);
+        const bool ok = ed != nullptr && written && image.getWidth() == 980 && image.getHeight() == 640;
+        r.pass = r.pass && ok;
+        text += std::string (engine == 0 ? "Light " : "; Full ") + std::to_string (image.getWidth()) + " x "
+                + std::to_string (image.getHeight()) + (written ? "" : " (not written)");
+    }
+    r.measured = text + "; inspected, see docs/DECISIONS.md";
     return r;
 }
 } // namespace sph::measure
