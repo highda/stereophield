@@ -50,7 +50,21 @@ void renderPresets (const juce::File& dir)
             continue;
         const float* chans[] = { y.l.data(), y.r.data() };
         writer->writeFromFloatArrays (chans, 2, (int) y.l.size());
-        std::printf ("rendered %s\n", file.getFullPathName().toRawUTF8());
+
+        // Width summary after the 1 s warm-up: side-to-mid energy and
+        // left-right correlation.
+        double mm = 0, ss = 0, lr = 0, ll = 0, rr = 0;
+        for (size_t k = (size_t) pl.fs; k < y.l.size(); ++k)
+        {
+            const double l = y.l[k], r = y.r[k];
+            mm += 0.25 * (l + r) * (l + r);
+            ss += 0.25 * (l - r) * (l - r);
+            lr += l * r;
+            ll += l * l;
+            rr += r * r;
+        }
+        std::printf ("rendered %-44s side/mid %6.1f dB, correlation %5.2f\n", file.getFileName().toRawUTF8(),
+                     10.0 * std::log10 (ss / mm + 1e-30), lr / std::sqrt (ll * rr + 1e-30));
     }
 }
 } // namespace

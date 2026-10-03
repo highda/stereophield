@@ -79,7 +79,10 @@ juce_add_plugin(stereophield
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
-    COPY_PLUGIN_AFTER_BUILD TRUE)
+    COPY_PLUGIN_AFTER_BUILD TRUE
+    # The Standalone app reads an audio input; macOS requires a usage string.
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "stereophield processes the audio input you select and plays it back in stereo.")
 target_compile_options(stereophield PRIVATE ${SPH_WARNINGS})
 target_link_libraries(stereophield
     PRIVATE sph_plugin_code
