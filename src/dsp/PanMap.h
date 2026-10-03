@@ -21,6 +21,8 @@ public:
     void prepare (double sampleRate, int fftSize, int hop);
     void reset();
 
+    void setOwnership (PanOwnership o) noexcept { ownership = o; }
+
     void setParams (PanMode mode, double depth, double density, double bassCentreHz, int maxGroups) noexcept
     {
         panMode = mode;
@@ -57,6 +59,7 @@ private:
     double fs = 48000.0;
     int n = 2048, k = 1025;
     PanMode panMode = PanMode::Groups;
+    PanOwnership ownership = PanOwnership::Soft;
     double panDepth = 0.7, panDensity = 1.0, bassCentre = 120.0;
     int groupLimit = 6;
     double timeCoeff = 0.0;
@@ -65,7 +68,7 @@ private:
 
     PartialTracker partials;
     SourceGrouper sources;
-    std::vector<float> at, target, p, pSmooth, weight;
+    std::vector<float> at, target, p, pSmooth, weight, wsum;
     std::array<int, PartialTracker::maxTracks> owners {};
     std::array<int, displayPoints> dispBin {};
     std::array<std::atomic<float>, displayPoints> dispPan {}, dispMag {};

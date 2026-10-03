@@ -168,7 +168,7 @@ Layout createParameterLayout()
     l.add (choice (ids::velvet_design, "Velvet design", { "Random", "Optimised" }, 1, true, v2));
     l.add (choice (ids::latency_mode, "Latency mode", { "Per engine", "Always Full" }, 0, false, v2));
     l.add (choice (ids::transient_mode, "Transient detector", { "Envelope", "Spectral flux" }, 1, true, v2));
-    l.add (choice (ids::pan_ownership, "Pan bin ownership", { "Hard", "Soft" }, 1, true, v2));
+    l.add (choice (ids::pan_ownership, "Pan bin ownership", { "Hard", "Soft" }, 0, true, v2));
     return l;
 }
 

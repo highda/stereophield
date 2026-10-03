@@ -15,4 +15,5 @@ Result t12Ambience();
 Result p2t25OptimisedVelvet();
 Result p2t19DoubleDrift();
 Result p2t20DoubleClean();
+Result p2t21RoomGeometry();
 } // namespace sph::measure

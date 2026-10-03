@@ -43,10 +43,15 @@ const std::vector<Entry>& registry()
         { "P2-T18", p2t18CoherenceCost },
         { "P2-T19", p2t19DoubleDrift },
         { "P2-T20", p2t20DoubleClean },
+        { "P2-T21", p2t21RoomGeometry },
+        { "P2-T22", p2t22RoomMonoSafe },
+        { "P2-T23", p2t23ImageRemap },
+        { "P2-T24", p2t24ImageMonoSafe },
         { "P2-T25", p2t25OptimisedVelvet },
         { "P2-T26", p2t26SeamlessChanges },
         { "P2-T27", p2t27ConstantLatency },
         { "P2-T28", p2t28FluxDetector },
+        { "P2-T29", p2t29SoftOwnership },
         { "P2-T36", p2t36PerceptualMetrics },
     };
     return entries;

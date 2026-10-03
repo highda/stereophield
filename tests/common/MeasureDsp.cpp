@@ -4,6 +4,7 @@
 #include "dsp/Analysis.h"
 #include "dsp/DoubleTracker.h"
 #include "dsp/Mod.h"
+#include "dsp/RoomCues.h"
 #include "dsp/Stft.h"
 #include "dsp/Velvet.h"
 #include "signals/TestSignals.h"
@@ -518,6 +519,131 @@ Result p2t20DoubleClean()
     r.pass = step <= 0.05 && curve <= 0.01 && finite;
     r.measured = "defaults: largest step " + fmt (step, 4) + " samples; any setting: largest slope change " + fmt (curve, 5)
                  + " samples/sample; " + (finite ? "no NaN" : "NaN found");
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+Result p2t21RoomGeometry()
+{
+    Result r { "P2-T21", "Room cues, 8 m room, order 2, ORTF pair: every reflection's delay at each microphone within 1 sample and gain within 0.1 dB of an independent image-source calculation; none later than 80 ms; energy after 85 ms <= -100 dB; side/mid on noise >= -30 dB (the room adds width)", "", true, false, "" };
+    const double fs = 48000.0, c = 343.0;
+    RoomCues::Geometry g;
+    g.size = 8.0f;
+    g.order = 2;
+    RoomCues::TapSet set;
+    RoomCues::build (set, g, fs);
+
+    // Independent enumeration: mirror the source across alternating walls.
+    const double lx = g.size, ly = 0.8 * g.size, lz = 3.0;
+    const double C[3] = { RoomCues::asymX * lx, RoomCues::asymY * ly, 1.2 };
+    const double S[3] = { C[0], C[1] + g.distance, 1.2 }, len[3] = { lx, ly, lz };
+    const double beta = std::sqrt (1.0 - g.absorb);
+    struct Image { double delay[2], gain[2]; };
+    std::vector<Image> expected;
+    for (int ix = -2; ix <= 2; ++ix)
+        for (int iy = -2; iy <= 2; ++iy)
+            for (int iz = -2; iz <= 2; ++iz)
+            {
+                const int hits = std::abs (ix) + std::abs (iy) + std::abs (iz);
+                if (hits < 1 || hits > 2)
+                    continue;
+                const int id[3] = { ix, iy, iz };
+                double img[3];
+                for (int a = 0; a < 3; ++a)
+                {
+                    double pos = S[a];
+                    double wall = id[a] > 0 ? len[a] : 0.0;
+                    for (int st = 0; st < std::abs (id[a]); ++st)
+                    {
+                        pos = 2.0 * wall - pos;
+                        wall = wall == 0.0 ? len[a] : 0.0;
+                    }
+                    img[a] = pos;
+                }
+                const double v[3] = { img[0] - C[0], img[1] - C[1], img[2] - C[2] };
+                const double rc = std::sqrt (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                if ((rc - g.distance) / c <= 0.0 || (rc - g.distance) / c > RoomCues::maxDelaySeconds)
+                    continue;
+                Image im {};
+                for (int mic = 0; mic < 2; ++mic)
+                {
+                    const double mx = (mic == 0 ? -1.0 : 1.0) * RoomCues::micSpacing / 2;
+                    const double dx = img[0] - (C[0] + mx);
+                    const double rm = std::sqrt (dx * dx + v[1] * v[1] + v[2] * v[2]);
+                    // Cardioid pointing +-55 degrees (left mic to the left),
+                    // using the 3-D angle between its axis and the arrival.
+                    const double ax = (mic == 0 ? -1.0 : 1.0) * std::sin (RoomCues::micAngleDeg * std::numbers::pi / 180.0);
+                    const double ay = std::cos (RoomCues::micAngleDeg * std::numbers::pi / 180.0);
+                    const double cosOff = (v[0] * ax + v[1] * ay) / rc;
+                    im.delay[mic] = (rm - g.distance) / c * fs;
+                    im.gain[mic] = (g.distance / rm) * std::pow (beta, hits) * (0.5 + 0.5 * cosOff);
+                }
+                expected.push_back (im);
+            }
+
+    double worstDelay = 0.0, worstGainDb = 0.0, latest = 0.0;
+    for (int t = 0; t < set.count; ++t)
+    {
+        const auto& tap = set.taps[(size_t) t];
+        const Image* best = nullptr;
+        double bestD = 1e18;
+        for (const auto& e : expected)
+        {
+            const double d = std::abs (e.delay[0] - tap.delay[0]) + std::abs (e.delay[1] - tap.delay[1])
+                             + 1000.0 * (std::abs (e.gain[0] - tap.gain[0]) + std::abs (e.gain[1] - tap.gain[1]));
+            if (d < bestD)
+            {
+                bestD = d;
+                best = &e;
+            }
+        }
+        for (int mic = 0; mic < 2; ++mic)
+        {
+            worstDelay = std::max (worstDelay, std::abs (best->delay[mic] - tap.delay[mic]));
+            if (best->gain[mic] > 1e-6)
+                worstGainDb = std::max (worstGainDb, std::abs (20.0 * std::log10 (tap.gain[mic] / best->gain[mic])));
+            latest = std::max (latest, tap.delay[mic] / fs);
+        }
+    }
+
+    RoomCues room;
+    Params p;
+    room.prepare ({ fs, 512 });
+    room.setParams (p, true);
+    const Signal x = impulse (samples (0.2, fs));
+    double total = 0.0, late = 0.0;
+    for (size_t i = 0; i < x.size(); ++i)
+    {
+        float s = 0, m = 0;
+        Buses b { &x[i], &x[i], &x[i], &x[i] };
+        room.process (b, &s, &m, 1);
+        const double e = (double) s * s + (double) m * m;
+        total += e;
+        if ((double) i / fs > 0.085)
+            late += e;
+    }
+    const double lateDb = 10.0 * std::log10 (late / total + 1e-300);
+
+    // The room must add width: side against the mid on noise.
+    room.reset();
+    const Signal nz = noise (samples (2.0, fs));
+    double ss = 0, mm = 0;
+    for (size_t i = 0; i < nz.size(); ++i)
+    {
+        float s = 0, m = 0;
+        Buses b { &nz[i], &nz[i], &nz[i], &nz[i] };
+        room.process (b, &s, &m, 1);
+        ss += (double) s * s;
+        mm += (double) nz[i] * nz[i];
+    }
+    const double sideDb = 10.0 * std::log10 (ss / mm);
+    r.pass = set.count == (int) expected.size() && worstDelay <= 1.0 && worstGainDb <= 0.1 && latest <= 0.080
+             && lateDb <= -100.0 && sideDb >= -30.0;
+    r.measured = std::to_string (set.count) + " of " + std::to_string (expected.size()) + " reflections; worst delay error "
+                 + fmt (worstDelay, 2) + " samples, gain " + fmt (worstGainDb, 3) + " dB; latest " + fmt (latest * 1000.0, 1)
+                 + " ms; energy after 85 ms " + fmtDb (lateDb) + "; side/mid on noise " + fmtDb (sideDb);
     return r;
 }
 } // namespace sph::measure

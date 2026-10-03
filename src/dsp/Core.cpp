@@ -470,6 +470,7 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         analyser.setParams (params.ambience, params.roomDecayS);
         analyser.panMap().setParams (panMode, params.panDepth, params.panDensity, params.panBassCenterHz,
                                      params.panMaxGroups);
+        analyser.panMap().setOwnership (params.panOwnership);
         if (stages && panAwake)
             side.spectralWeights (analyser.panMap().weights(), analyser.numBins(), analyser.fftSize());
         analyser.coherence().setParams (params);

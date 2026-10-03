@@ -23,6 +23,7 @@ void PanMap::prepare (double sampleRate, int fftSize, int hop)
     for (auto* v : { &at, &target, &p, &pSmooth })
         v->assign ((size_t) k, 0.0f);
     weight.assign ((size_t) k, 1.0f);
+    wsum.assign ((size_t) k, 0.0f);
     for (int i = 0; i < displayPoints; ++i)
         dispBin[(size_t) i] = std::clamp ((int) std::lround (displayFrequency (i) * n / fs), 0, k - 1);
     reset();
@@ -79,6 +80,37 @@ void PanMap::processFrame (const std::complex<float>* x, const float* a, const f
         {
             return tracks[(size_t) l].peakBin != tracks[(size_t) r].peakBin ? tracks[(size_t) l].peakBin < tracks[(size_t) r].peakBin : l < r;
         });
+        if (ownership == PanOwnership::Soft)
+        {
+            // Soft ownership (PART2_LEDGER.md I5): every bin within +-6 N/2048
+            // of a track's peak takes the average of those tracks' pans,
+            // weighted by the partial's power in the bin: amplitude times the
+            // window's main-lobe response
+            // |W(x)| = |cos(pi x) / (1 - 4 x^2)| of the sqrt-Hann window at
+            // the bin's distance x from the track's frequency.
+            std::fill (wsum.begin(), wsum.end(), 0.0f);
+            for (int o = 0; o < count; ++o)
+            {
+                const auto& t = tracks[(size_t) owners[(size_t) o]];
+                const double pan = panMode == PanMode::Tracks ? curve (t.birthFreq) : t.pan;
+                const double fk = t.freq * n / fs;
+                for (int b = std::max (0, t.peakBin - ownRadius); b <= std::min (k - 1, t.peakBin + ownRadius); ++b)
+                {
+                    const double x = b - fk;
+                    const double d = 1.0 - 4.0 * x * x;
+                    const double wv = std::abs (d) < 1e-9 ? std::numbers::pi / 4.0 : std::abs (std::cos (std::numbers::pi * x) / d);
+                    // Weighted by the partial's power in the bin.
+                    const double a = std::max (t.amp, 1e-9) * std::max (wv, 1e-4);
+                    const float wt = (float) (a * a);
+                    target[(size_t) b] += wt * (float) pan;
+                    wsum[(size_t) b] += wt;
+                }
+            }
+            for (int b = 0; b < k; ++b)
+                if (wsum[(size_t) b] > 0.0f)
+                    target[(size_t) b] /= wsum[(size_t) b];
+        }
+        else
         for (int o = 0; o < count; ++o)
         {
             const auto& t = tracks[(size_t) owners[(size_t) o]];

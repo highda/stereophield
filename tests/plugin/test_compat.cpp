@@ -41,5 +41,5 @@ TEST_CASE ("Legacy values apply only to states from 1.0", "[compat]")
     Plugin reload;
     reload.processor().setStateInformation (state.getData(), (int) state.getSize());
     CHECK (reload.get (ids::velvet_design) == 1.0f);
-    CHECK (reload.get (ids::pan_ownership) == 1.0f);
+    CHECK (reload.get (ids::pan_ownership) == 0.0f);
 }

@@ -36,6 +36,10 @@ Result p2t18CoherenceCost();
 Result p2t28FluxDetector();
 Result p2t26SeamlessChanges();
 Result p2t27ConstantLatency();
+Result p2t29SoftOwnership();
+Result p2t22RoomMonoSafe();
+Result p2t23ImageRemap();
+Result p2t24ImageMonoSafe();
 
 // Perceptual metrics of one stereo render against its input (I12).
 struct Perceptual

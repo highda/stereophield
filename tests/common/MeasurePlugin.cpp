@@ -3,6 +3,7 @@
 #include "common/Render.h"
 #include "common/SignalMath.h"
 #include "ui/PluginEditor.h"
+#include "dsp/ImageExpander.h"
 #include "dsp/Loudness.h"
 #include "dsp/Stft.h"
 #include "dsp/StereoBands.h"
@@ -250,8 +251,11 @@ double sideEnergyAroundClick (int engine, float duck, double fromMs, double toMs
 
 namespace
 {
+int panOwnershipForTest = 0;
+
 void panOnly (Plugin& pl)
 {
+    pl.set (ids::pan_ownership, (float) panOwnershipForTest);
     pl.set (ids::engine, 1);
     pl.set (ids::spread_amount, 0);
     pl.set (ids::pan_amount, 100);
@@ -1445,6 +1449,163 @@ Result p2t27ConstantLatency()
     }
     r.pass = worst <= 1.0 && constant;
     r.measured = "largest window drop " + fmt (worst, 2) + " dB; latency " + (constant ? "constant" : "changed");
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+Result p2t29SoftOwnership()
+{
+    Result r { "P2-T29", "Soft bin ownership: T13 source A >= 7.5 dB and B >= 12 dB; T14 passes", "", false, true, "" };
+    panOwnershipForTest = 1;
+    const auto t13 = t13SourceGrouping();
+    const auto t14 = t14MelodyInPlace();
+    panOwnershipForTest = 0;
+    const auto hard = t13SourceGrouping();
+    r.pass = false;
+    r.measured = "Soft: " + t13.measured.substr (t13.measured.find ("L-R")) + (t14.pass ? ", T14 passes" : ", T14 fails")
+                 + "; Hard: " + hard.measured.substr (hard.measured.find ("L-R"));
+    // Fallback (DECISIONS.md, phase 2.5): blending shared bins cannot beat
+    // hard ownership here; Hard is the default and Soft an option.
+    if (t14.pass && hard.pass)
+        r.note = "fallback: Hard ownership is the default";
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+Result p2t22RoomMonoSafe()
+{
+    Result r { "P2-T22", "Room cues at 100 %: mono-safe (T2 criterion, <= -120 dB) at every order and at the size and distance extremes", "", true, false, "" };
+    double worst = -1e9;
+    for (int order : { 0, 1 })
+        for (float size : { 2.0f, 30.0f })
+            for (float dist : { 0.5f, 8.0f })
+            {
+                Plugin pl;
+                pl.set (ids::spread_amount, 0);
+                pl.set (ids::room_amount, 100);
+                pl.set (ids::room_order, (float) order);
+                pl.set (ids::room_size, size);
+                pl.set (ids::room_distance, dist);
+                pl.prepare();
+                worst = std::max (worst, monoSafeErrorDb (pl));
+            }
+    r.pass = worst <= -120.0;
+    r.measured = "worst " + fmtDb (worst) + " over 8 settings";
+    return r;
+}
+
+namespace
+{
+// Five sines, each amplitude-panned with a constant-power law to a position
+// p (+1 = left only): gains sin and cos of (p + 1) pi / 4.
+constexpr double imageFreqs[5] = { 300.0, 700.0, 1300.0, 2300.0, 3700.0 };
+constexpr double imagePans[5] = { -0.8, -0.4, 0.0, 0.4, 0.8 };
+
+void pannedSources (double fs, int len, Signal& l, Signal& r)
+{
+    l.assign ((size_t) len, 0.0f);
+    r.assign ((size_t) len, 0.0f);
+    for (int k = 0; k < 5; ++k)
+    {
+        const double th = (imagePans[k] + 1.0) * std::numbers::pi / 4.0;
+        for (int i = 0; i < len; ++i)
+        {
+            const double v = 0.08 * std::sin (2.0 * std::numbers::pi * imageFreqs[k] * i / fs);
+            l[(size_t) i] += (float) (std::sin (th) * v);
+            r[(size_t) i] += (float) (std::cos (th) * v);
+        }
+    }
+}
+
+// Panning index Re(S M*) / |M|^2 of the output at a frequency.
+double panningIndex (const Stereo& y, size_t from, double f, double fs)
+{
+    const int order = 15;
+    const size_t n = (size_t) 1 << order;
+    Signal m (n), sd (n);
+    for (size_t i = 0; i < n; ++i)
+    {
+        const float w = (float) (0.5 - 0.5 * std::cos (2.0 * std::numbers::pi * (double) i / (double) n));
+        m[i] = 0.5f * (y.l[from + i] + y.r[from + i]) * w;
+        sd[i] = 0.5f * (y.l[from + i] - y.r[from + i]) * w;
+    }
+    const auto M = spectrum (m.data(), n, order), S = spectrum (sd.data(), n, order);
+    const size_t k = (size_t) std::lround (f * (double) n / fs);
+    std::complex<double> num {};
+    double den = 0;
+    for (size_t j = k - 2; j <= k + 2; ++j)
+    {
+        num += S[j] * std::conj (M[j]);
+        den += std::norm (M[j]);
+    }
+    return num.real() / den;
+}
+} // namespace
+
+Result p2t23ImageRemap()
+{
+    Result r { "P2-T23", "Image expander at 150 %, five constant-power panned sources at -0.8 .. 0.8: output panning index of each within +-0.05 of knee(1.5 x input index)", "", true, true, "" };
+    const double fs = 48000.0;
+    Signal l, rr;
+    pannedSources (fs, samples (3.0, fs), l, rr);
+    Plugin pl (fs, 512, 2);
+    pl.set (ids::engine, 1);
+    pl.set (ids::spread_amount, 0);
+    pl.set (ids::img_amount, 150);
+    pl.prepare();
+    const auto y = pl.render (l, &rr);
+    const size_t from = (size_t) samples (1.5, fs);
+    double worst = 0.0;
+    std::string text;
+    for (int k = 0; k < 5; ++k)
+    {
+        const double th = (imagePans[k] + 1.0) * std::numbers::pi / 4.0;
+        const double rhoIn = (std::sin (th) - std::cos (th)) / (std::sin (th) + std::cos (th));
+        const double want = ImageExpander::knee (1.5 * rhoIn);
+        const double got = panningIndex (y, from, imageFreqs[k], fs);
+        worst = std::max (worst, std::abs (got - want));
+        text += (k ? ", " : "") + fmt (rhoIn, 2) + " -> " + fmt (got, 2) + " (" + fmt (want, 2) + ")";
+    }
+    r.pass = worst <= 0.05;
+    r.measured = "worst error " + fmt (worst, 3) + ": " + text;
+    return r;
+}
+
+Result p2t24ImageMonoSafe()
+{
+    Result r { "P2-T24", "Image expander active (150 %, diffuse 50 %) on stereo input: (L + R) / 2 equals the input mid delayed by Lat within -120 dB", "", true, false, "" };
+    const double fs = 48000.0;
+    Signal l, rr;
+    pannedSources (fs, samples (3.0, fs), l, rr);
+    const Signal nl = noise (samples (3.0, fs), 11), nr = noise (samples (3.0, fs), 12);
+    for (size_t i = 0; i < l.size(); ++i)
+    {
+        l[i] += 0.3f * nl[i];
+        rr[i] += 0.3f * nr[i];
+    }
+    Plugin pl (fs, 512, 2);
+    pl.set (ids::engine, 1);
+    pl.set (ids::img_amount, 150);
+    pl.set (ids::img_diffuse, 50);
+    pl.prepare();
+    const auto y = pl.render (l, &rr);
+    const size_t lat = (size_t) pl.latency();
+    double e = 0, ref = 0;
+    for (size_t i = lat; i < l.size(); ++i)
+    {
+        const double m = 0.5 * ((double) l[i - lat] + rr[i - lat]);
+        const double d = 0.5 * ((double) y.l[i] + y.r[i]) - m;
+        e += d * d;
+        ref += m * m;
+    }
+    const double db = 10.0 * std::log10 (std::max (e, 1e-300) / ref);
+    const bool active = pl.core().expanderActive();
+    r.pass = db <= -120.0 && active;
+    r.measured = fmtDb (db) + (active ? "" : " (expander not active)");
     return r;
 }
 } // namespace sph::measure

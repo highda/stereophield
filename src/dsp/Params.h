@@ -97,7 +97,7 @@ struct Params
     VelvetDesign velvetDesign = VelvetDesign::Optimised;
     LatencyMode latencyMode = LatencyMode::PerEngine;
     TransientMode transientMode = TransientMode::SpectralFlux;
-    PanOwnership panOwnership = PanOwnership::Soft;
+    PanOwnership panOwnership = PanOwnership::Hard;
 };
 
 // Generators, in the order of the signal-flow diagram.
