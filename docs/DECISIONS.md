@@ -103,3 +103,4 @@ Dated list of choices not dictated by `DESIGN.md`, and every fallback applied.
 - `sph_measure --renders` prints each render's side-to-mid energy and left-right correlation as a reference for listening.
 - Fallbacks applied: none. Every tunable test passes. T15 needed its tunable detector constants changed (logged under phase 4); T16 passes with the specified 200 ms guard.
 - Not verified by the agent, left to human testing: launching the Standalone app and passing live audio through it (opening an input raises the macOS microphone prompt, which needs a person), loading the Audio Unit in a host, and listening to `build/renders/`.
+- 2026-10-03: the owner reported that the human tests are clear, which closes the items above that were left to human testing.
