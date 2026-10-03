@@ -38,3 +38,12 @@ Dated list of choices not dictated by `DESIGN.md`, and every fallback applied.
 - Values below 1e-30 in magnitude are flushed to zero at the side-bus and output-stage outputs (T20); this changes nothing above -600 dBFS.
 - T2 random parameter sets draw every parameter uniformly in its normalised range, then force `mid_blend` 0, `comp_mode` Mono-exact, `listen` Stereo and `bypass` off (the invariant is defined for the processed stereo output). The residual is float rounding of `M +- S`; it grows with the side level relative to the mid.
 - Plugin state stores the current program index alongside the APVTS state.
+
+### Phase 3
+
+- `Rng::setSeed` scrambles the seed with the murmur3 32-bit finaliser before seeding xorshift32. Without it, seeds 1000 and 1001 (Velvet left and right) produced nearly identical first outputs, so both sequences put their dominant first impulse at the same position with the same sign; T9 measured a correlation of 0.371. With the scramble it measures 0.149. The `noise` signal changed accordingly; all earlier tests were re-run.
+- Velvet draws `rnd1` and then `rnd2` from one generator per impulse, in impulse order. Positions are clamped to `[0, Len - 1]`.
+- Velvet sequences are rebuilt on the audio thread inside the 20 ms fade instead of on the message thread: building two sequences of at most 240 impulses allocates nothing and costs a few microseconds, and it keeps offline renders deterministic and independent of the block size. The fade (out, rebuild, reset, in) is as specified.
+- Mod's `reset()` clears only the delay line and parameter smoothers. The chorus phase, its smoothed LFO value and the pitch-shifter phasors start at zero in `prepare()` only, so that a module woken from sleep is in phase with one that never slept (T17). Each micro-pitch side advances by its own `|ratio - 1| / W`, with `ratio = 2^(+cents/1200)` on the left and `2^(-cents/1200)` on the right, which gives the 994.81 Hz of T8.
+- Chorus rate is smoothed linearly over 20 ms and the LFO corner one-pole is recomputed from it once per sub-block; base, depth and pre-delay use the 50 ms delay-time one-pole.
+- T7 is checked at three settings (defaults; 5 Hz with 5 ms depth; 0.05 Hz with base 3 ms and depth 2.5 ms, the deepest that does not hit the 0.5 ms clamp).

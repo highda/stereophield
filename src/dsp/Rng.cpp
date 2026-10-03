@@ -7,8 +7,17 @@ namespace sph
 {
 void Rng::setSeed (uint32_t seed)
 {
-    // xorshift has a fixed point at zero, so remap it.
-    state = seed != 0 ? seed : 0x9E3779B9u;
+    // Scramble the seed (murmur3 finaliser) so that neighbouring seeds such as
+    // 1000 and 1001 start uncorrelated streams; xorshift alone keeps them
+    // close for the first outputs. xorshift has a fixed point at zero, so
+    // remap that.
+    uint32_t h = seed + 0x9E3779B9u;
+    h ^= h >> 16;
+    h *= 0x85EBCA6Bu;
+    h ^= h >> 13;
+    h *= 0xC2B2AE35u;
+    h ^= h >> 16;
+    state = h != 0 ? h : 0x9E3779B9u;
     hasSpare = false;
     spare = 0.0;
 }

@@ -4,6 +4,7 @@
 #include "dsp/DelayLine.h"
 #include "dsp/HaasDelay.h"
 #include "dsp/Meters.h"
+#include "dsp/Mod.h"
 #include "dsp/OutputStage.h"
 #include "dsp/Params.h"
 #include "dsp/ProcessSpec.h"
@@ -11,6 +12,7 @@
 #include "dsp/SleepController.h"
 #include "dsp/Spread.h"
 #include "dsp/TransientDetector.h"
+#include "dsp/Velvet.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
@@ -62,6 +64,8 @@ public:
     const SleepController& sideBusSleep() const noexcept { return sideSleep; }
     const Spread& spread() const noexcept { return spreadGen; }
     const HaasDelay& haas() const noexcept { return haasGen; }
+    const Mod& mod() const noexcept { return modGen; }
+    const Velvet& velvet() const noexcept { return velvetGen; }
     const SideBus& sideBus() const noexcept { return side; }
     const OutputStage& output() const noexcept { return out; }
     // Generators processed in the last block, as a bit mask over GeneratorId.
@@ -95,6 +99,8 @@ private:
     SleepController detectorSleep;
     Spread spreadGen;
     HaasDelay haasGen;
+    Mod modGen;
+    Velvet velvetGen;
     std::array<Slot, numGenerators> slots;
     SideBus side;
     SleepController sideSleep;

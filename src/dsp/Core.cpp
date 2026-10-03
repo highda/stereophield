@@ -29,6 +29,8 @@ void Core::prepare (const ProcessSpec& s, const Params& p)
     detector.prepare (fs);
     spreadGen.prepare (spec);
     haasGen.prepare (spec);
+    modGen.prepare (spec);
+    velvetGen.prepare (spec);
     for (auto& slot : slots)
         slot.amount.reset (fs, 0.020);
     side.prepare (spec);
@@ -62,6 +64,8 @@ void Core::applySnap (const Params& p)
 
     spreadGen.setParams (p, true);
     haasGen.setParams (p, true);
+    modGen.setParams (p, true);
+    velvetGen.setParams (p, true);
     side.setParams (p, true);
     out.setParams (p, true);
     const float amounts[numGenerators] = { p.spreadAmount, p.delayAmount, p.modAmount, p.velvetAmount, p.panAmount };
@@ -79,6 +83,8 @@ void Core::resetAll()
     detectorSleep.reset();
     spreadGen.reset();
     haasGen.reset();
+    modGen.reset();
+    velvetGen.reset();
     for (auto& slot : slots)
     {
         slot.amount.setCurrentAndTargetValue (slot.amount.getTargetValue());
@@ -102,6 +108,8 @@ void Core::process (const float* inL, const float* inR, float* outL, float* outR
     {
         spreadGen.setParams (params, false);
         haasGen.setParams (params, false);
+        modGen.setParams (params, false);
+        velvetGen.setParams (params, false);
         side.setParams (params, false);
         out.setParams (params, false);
         const float amounts[numGenerators] = { params.spreadAmount, params.delayAmount, params.modAmount,
@@ -185,7 +193,11 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         spreadGen.reset();
     if (decide (genDelay, haasGen.active().source, haasGen.pending().source, haasGen.tailSamples(), haasGen.isSettled()))
         haasGen.reset();
-    for (GeneratorId g : { genMod, genVelvet, genPan })
+    if (decide (genMod, modGen.active().source, modGen.pending().source, modGen.tailSamples(), modGen.isSettled()))
+        modGen.reset();
+    if (decide (genVelvet, velvetGen.active().source, velvetGen.pending().source, velvetGen.tailSamples(), velvetGen.isSettled()))
+        velvetGen.reset();
+    for (GeneratorId g : { genPan })
     {
         slots[(size_t) g].awake = false;
         slots[(size_t) g].amount.skip (n);
@@ -245,6 +257,25 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     }
     else
         slots[genDelay].amount.skip (n);
+    if (slots[genMod].awake)
+    {
+        modGen.process (buses, sTmp.data(), mTmp.data(), n);
+        accumulate (slots[genMod], sTmp.data(), mTmp.data());
+        awakeMask |= 1u << genMod;
+    }
+    else
+    {
+        modGen.advanceWhileAsleep (n);
+        slots[genMod].amount.skip (n);
+    }
+    if (slots[genVelvet].awake)
+    {
+        velvetGen.process (buses, sTmp.data(), mTmp.data(), n);
+        accumulate (slots[genVelvet], sTmp.data(), mTmp.data());
+        awakeMask |= 1u << genVelvet;
+    }
+    else
+        slots[genVelvet].amount.skip (n);
 
     // 7. Side bus.
     const bool allAsleep = awakeMask == 0;
@@ -285,6 +316,10 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         longest = std::max (longest, spreadGen.tailSamples());
     if (slots[genDelay].awake)
         longest = std::max (longest, haasGen.tailSamples());
+    if (slots[genMod].awake)
+        longest = std::max (longest, modGen.tailSamples());
+    if (slots[genVelvet].awake)
+        longest = std::max (longest, velvetGen.tailSamples());
     if (sideAwake)
         longest = std::max (longest, side.tailSamples());
     tail.store ((double) (longest + latency) / fs, std::memory_order_relaxed);
