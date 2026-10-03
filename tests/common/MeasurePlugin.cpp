@@ -3,6 +3,9 @@
 #include "common/Render.h"
 #include "common/SignalMath.h"
 #include "ui/PluginEditor.h"
+#include "dsp/Loudness.h"
+#include "dsp/StereoBands.h"
+#include "dsp/VirtualListener.h"
 
 #include <numbers>
 
@@ -897,6 +900,136 @@ Result t28InterfaceSnapshot()
                 + std::to_string (image.getHeight()) + (written ? "" : " (not written)");
     }
     r.measured = text + "; inspected, see docs/DECISIONS.md";
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+namespace
+{
+double meanAsw (const Signal& l, const Signal& r, double fs, size_t from,
+                VirtualListener::Playback playback = VirtualListener::Playback::Speakers)
+{
+    VirtualListener vl;
+    vl.prepare (fs, 0.3, playback);
+    const size_t w = (size_t) vl.windowSize();
+    double sum = 0.0;
+    int count = 0;
+    for (size_t s = from; s + w <= l.size(); s += w)
+    {
+        vl.addWindow (l.data() + s, r.data() + s);
+        if (s >= from + 3 * w) // after the smoothing settles
+        {
+            sum += vl.asw();
+            ++count;
+        }
+    }
+    return count > 0 ? sum / count : 0.0;
+}
+} // namespace
+
+Perceptual perceptual (const std::vector<float>& in, const std::vector<float>& l, const std::vector<float>& r,
+                       int latency, double fs)
+{
+    const size_t from = (size_t) fs + (size_t) latency;
+    Perceptual p {};
+    p.correlation = sph::test::correlation (l, r, from, l.size());
+    p.asw = meanAsw (l, r, fs, from);
+
+    // Mono fold: worst third-octave deviation of (L + R) / 2 from the delayed input.
+    StereoBands sb;
+    sb.prepare (fs, 10.0);
+    Signal ref (l.size(), 0.0f);
+    for (size_t i = (size_t) latency; i < l.size(); ++i)
+        ref[i] = in[i - (size_t) latency];
+    for (size_t s = from; s + StereoBands::frameSize <= l.size(); s += StereoBands::frameSize / 2)
+        sb.addFrame (l.data() + s, r.data() + s, ref.data() + s);
+    p.monoFoldDb = 0.0;
+    for (int b = 0; b < StereoBands::numBands; ++b)
+        if (StereoBands::bandCentre (b) <= 0.45 * fs && std::abs (sb.monoFoldDb (b)) > std::abs (p.monoFoldDb))
+            p.monoFoldDb = sb.monoFoldDb (b);
+
+    const double lin = Loudness::integrated (in.data(), in.data(), in.size(), fs);
+    const double lout = Loudness::integrated (l.data() + latency, r.data() + latency, l.size() - (size_t) latency, fs);
+    p.lufsChange = lout - lin;
+    return p;
+}
+
+std::string presetMetricsMarkdown()
+{
+    std::string md = "# Preset metrics\n\nWritten by `sph_measure --metrics`. Each factory preset on 6 s of `mix` "
+                     "(mono input, 48 kHz), measured after 1 s. These are objective companions to listening, not "
+                     "pass criteria (PART2_LEDGER.md, I12).\n\n"
+                     "- **Correlation**: broadband L/R correlation.\n"
+                     "- **ASW**: apparent source width from the virtual listener (0 = point source, 1 = fully diffuse).\n"
+                     "- **Mono fold**: worst third-octave deviation of (L + R) / 2 from the input; 0 dB is mono-safe.\n"
+                     "- **Loudness**: integrated loudness change, BS.1770, output against a dual-mono input.\n\n"
+                     "| # | Preset | Correlation | ASW | Mono fold | Loudness |\n| --- | --- | --- | --- | --- | --- |\n";
+    const auto& presets = factoryPresets();
+    for (int i = 0; i < (int) presets.size(); ++i)
+    {
+        Plugin pl;
+        pl.preset (i + 1);
+        pl.prepare();
+        const Signal x = tile (mix (pl.fs), samples (6.0, pl.fs));
+        const auto y = pl.render (x);
+        const auto m = perceptual (x, y.l, y.r, pl.latency(), pl.fs);
+        md += "| " + std::to_string (i + 1) + " | " + presets[(size_t) i].name + " | " + fmt (m.correlation, 2) + " | "
+              + fmt (m.asw, 2) + " | " + fmt (m.monoFoldDb, 1) + " dB | " + fmt (m.lufsChange, 1) + " LU |\n";
+    }
+    return md;
+}
+
+Result p2t14PerceivedWidth()
+{
+    Result r { "P2-T14", "Virtual listener. Speakers: identical L/R ASW <= 0.05; hard-panned source <= 0.1; ASW rises strictly as coherence falls 1, 0.75, 0.5, then stays within 0.05 (crosstalk floor); independent noise in [0.4, 0.8]. Headphones: rises strictly 1 to 0; independent >= 0.9", "", false, true, "" };
+    const double fs = 48000.0;
+    const int len = samples (4.0, fs);
+    const Signal a = noise (len, 1), b = noise (len, 2);
+    const Signal silent ((size_t) len, 0.0f);
+    const double same = meanAsw (a, a, fs, 0);
+    const double panned = meanAsw (a, silent, fs, 0);
+    const double rhos[] = { 1.0, 0.75, 0.5, 0.25, 0.0 };
+    double sp[5], hp[5];
+    for (int i = 0; i < 5; ++i)
+    {
+        Signal rr ((size_t) len);
+        for (size_t k = 0; k < rr.size(); ++k)
+            rr[k] = (float) (rhos[i] * a[k] + std::sqrt (1.0 - rhos[i] * rhos[i]) * b[k]);
+        sp[i] = meanAsw (a, rr, fs, 0);
+        hp[i] = meanAsw (a, rr, fs, 0, VirtualListener::Playback::Headphones);
+    }
+    const bool speakers = same <= 0.05 && panned <= 0.1 && sp[1] > sp[0] && sp[2] > sp[1]
+                          && std::abs (sp[3] - sp[2]) <= 0.05 && std::abs (sp[4] - sp[2]) <= 0.05 && sp[4] >= 0.4 && sp[4] <= 0.8;
+    bool headphones = hp[4] >= 0.9;
+    for (int i = 1; i < 5; ++i)
+        headphones = headphones && hp[i] > hp[i - 1];
+    r.pass = speakers && headphones;
+    std::string sc, hc;
+    for (int i = 0; i < 5; ++i)
+    {
+        sc += (i ? ", " : "") + fmt (sp[i], 2);
+        hc += (i ? ", " : "") + fmt (hp[i], 2);
+    }
+    r.measured = "speakers: identical " + fmt (same, 3) + ", hard-panned " + fmt (panned, 3) + ", coherence 1..0 " + sc
+                 + "; headphones " + hc;
+    return r;
+}
+
+Result p2t36PerceptualMetrics()
+{
+    Result r { "P2-T36", "BS.1770 calibration: 997 Hz sine at -20 dBFS in one channel reads -23.0 LUFS within 0.2 LU; preset metrics table written", "", false, false, "" };
+    const double fs = 48000.0;
+    const Signal s = sine (997.0, samples (10.0, fs), fs, 0.1);
+    const double lufs = Loudness::integrated (s.data(), nullptr, s.size(), fs);
+    const Signal s44 = sine (997.0, samples (10.0, 44100.0), 44100.0, 0.1);
+    const double lufs44 = Loudness::integrated (s44.data(), nullptr, s44.size(), 44100.0);
+    const auto md = presetMetricsMarkdown();
+    const bool written = juce::File (SPH_SOURCE_DIR).getChildFile ("docs/PRESET_METRICS.md").replaceWithText (md);
+    r.pass = std::abs (lufs + 23.01) <= 0.2 && std::abs (lufs44 + 23.01) <= 0.2 && written;
+    r.measured = "48 kHz " + fmt (lufs, 2) + " LUFS, 44.1 kHz " + fmt (lufs44, 2) + " LUFS; docs/PRESET_METRICS.md "
+                 + (written ? "written" : "not written");
     return r;
 }
 } // namespace sph::measure

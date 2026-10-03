@@ -25,4 +25,17 @@ Result t25Performance();
 Result t26PresetSanity();
 Result t27Bypass();
 Result t28InterfaceSnapshot();
+
+// Part 2.
+Result p2t14PerceivedWidth();
+Result p2t36PerceptualMetrics();
+
+// Perceptual metrics of one stereo render against its input (I12).
+struct Perceptual
+{
+    double correlation, asw, monoFoldDb, lufsChange;
+};
+Perceptual perceptual (const std::vector<float>& in, const std::vector<float>& l, const std::vector<float>& r,
+                       int latency, double fs);
+std::string presetMetricsMarkdown();
 } // namespace sph::measure

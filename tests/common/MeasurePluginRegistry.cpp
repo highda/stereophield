@@ -36,6 +36,8 @@ const std::vector<Entry>& registry()
         { "T26", t26PresetSanity },
         { "T27", t27Bypass },
         { "T28", t28InterfaceSnapshot },
+        { "P2-T14", p2t14PerceivedWidth },
+        { "P2-T36", p2t36PerceptualMetrics },
     };
     return entries;
 }
