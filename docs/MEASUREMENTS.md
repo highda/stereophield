@@ -20,4 +20,8 @@ Written by `sph_measure --all` on 2026-10-03. Release build, 48 kHz and block 51
 | T14 | melody, same setup as T13: all four notes receive the same pan | pans -0.50, -0.50, -0.50, -0.50 | pass |
 | T15 | toneClick, Spread only, duck 100 % vs 0: side energy -1..+5 ms around the click >= 20 dB lower (Full); +0.5..+5 ms >= 10 dB lower (Light) | Full 33.0 dB lower, Light 37.5 dB lower | pass |
 | T16 | All generators at 100 %, width 200 %, guard On, noise: correlation of every 100 ms window after 500 ms >= -0.1 | minimum -0.071 | pass |
+| T17 | Preset 16 with vs without forceAwake. gapNoise: difference <= -100 dB over the whole render. noise with each of Spread, Delay, Mod, Velvet at 0 for 1 s and back: <= -80 dB from 150 ms after each wake | part 1 -inf dB; part 2 Spread/Delay/Mod/Velvet -inf dB, -inf dB, -inf dB, -inf dB | pass |
+| T18 | Preset 16, 20 s renders, median of 5: silent input <= 0.2 x the time of noise; all amounts 0 with noise <= 0.2 x | noise 0.563 s; silent 0.010 s (0.018x); all amounts 0 0.011 s (0.019x) | pass |
+| T19 | Allocations inside processBlock, presets 1, 14, 16 with parameter automation: count is 0 | 0 allocations | pass |
+| T20 | forceAwake, preset 16, noise 1 s then silence 5 s: no output sample with 0 < \|x\| < 1e-30 | 0 samples; smallest non-zero magnitude -600 dBFS | pass |
 | T27 | Bypass on, stereo noise: output - input delayed by Lat <= -120 dB, both engines | Light -149.5 dB (Lat 0), Full -149.5 dB (Lat 2048) | pass |

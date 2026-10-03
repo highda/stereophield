@@ -24,6 +24,10 @@ const std::vector<Entry>& registry()
         { "T14", t14MelodyInPlace },
         { "T15", t15TransientCentring },
         { "T16", t16Guard },
+        { "T17", t17SmartDisableEquivalence },
+        { "T18", t18SmartDisableSaves },
+        { "T19", t19NoAllocation },
+        { "T20", t20NoDenormals },
         { "T27", t27Bypass },
     };
     return entries;

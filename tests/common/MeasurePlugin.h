@@ -13,5 +13,9 @@ Result t13SourceGrouping();
 Result t14MelodyInPlace();
 Result t15TransientCentring();
 Result t16Guard();
+Result t17SmartDisableEquivalence();
+Result t18SmartDisableSaves();
+Result t19NoAllocation();
+Result t20NoDenormals();
 Result t27Bypass();
 } // namespace sph::measure

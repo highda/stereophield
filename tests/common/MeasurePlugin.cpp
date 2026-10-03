@@ -8,6 +8,12 @@
 #include <algorithm>
 #include <cmath>
 
+namespace sph::test
+{
+extern std::atomic<bool> allocCounting;
+extern std::atomic<long> allocCount;
+} // namespace sph::test
+
 namespace sph::measure
 {
 using namespace sph::test;
@@ -443,6 +449,223 @@ Result t16Guard()
         worst = std::min (worst, correlation (y.l, y.r, from, from + win));
     r.pass = worst >= -0.1;
     r.measured = "minimum " + fmt (worst, 3);
+    return r;
+}
+
+namespace
+{
+double medianOf (std::vector<double> v)
+{
+    std::sort (v.begin(), v.end());
+    return v[v.size() / 2];
+}
+
+// Seconds to render x through a prepared plugin (Release build).
+double timeRender (Plugin& pl, const Signal& x)
+{
+    const auto t0 = juce::Time::getMillisecondCounterHiRes();
+    pl.render (x);
+    return (juce::Time::getMillisecondCounterHiRes() - t0) * 0.001;
+}
+
+// Changes applied at a block index during a render.
+struct Automation
+{
+    size_t block;
+    const char* id;
+    float value;
+};
+
+Stereo renderAutomated (Plugin& pl, const Signal& x, const std::vector<Automation>& events)
+{
+    Stereo out { Signal (x.size()), Signal (x.size()) };
+    juce::AudioBuffer<float> buf (2, pl.block);
+    juce::MidiBuffer midi;
+    size_t next = 0, blockIndex = 0;
+    for (size_t pos = 0; pos < x.size(); pos += (size_t) pl.block, ++blockIndex)
+    {
+        while (next < events.size() && events[next].block == blockIndex)
+        {
+            pl.set (events[next].id, events[next].value);
+            ++next;
+        }
+        const int n = (int) std::min ((size_t) pl.block, x.size() - pos);
+        buf.setSize (2, n, false, false, true);
+        buf.clear();
+        buf.copyFrom (0, 0, x.data() + pos, n);
+        pl.processor().processBlock (buf, midi);
+        std::copy (buf.getReadPointer (0), buf.getReadPointer (0) + n, out.l.begin() + (long) pos);
+        std::copy (buf.getReadPointer (1), buf.getReadPointer (1) + n, out.r.begin() + (long) pos);
+    }
+    return out;
+}
+
+// Energy of (a - b) over [from, to) relative to the energy of ref there, in dB.
+double diffDb (const Stereo& a, const Stereo& b, const Signal& ref, size_t from, size_t to)
+{
+    double e = 0, r = 0;
+    for (size_t i = from; i < to; ++i)
+    {
+        const double dl = (double) a.l[i] - b.l[i], dr = (double) a.r[i] - b.r[i];
+        e += 0.5 * (dl * dl + dr * dr);
+        r += (double) ref[i] * ref[i];
+    }
+    return 10.0 * std::log10 (std::max (e, 1e-300) / std::max (r, 1e-300));
+}
+} // namespace
+
+Result t17SmartDisableEquivalence()
+{
+    Result r { "T17", "Preset 16 with vs without forceAwake. gapNoise: difference <= -100 dB over the whole render. noise with each of Spread, Delay, Mod, Velvet at 0 for 1 s and back: <= -80 dB from 150 ms after each wake", "", false, false, "" };
+    // Part 1.
+    const double fs = 48000.0;
+    const Signal g = gapNoise (fs);
+    Stereo y[2];
+    for (int force = 0; force < 2; ++force)
+    {
+        Plugin pl;
+        pl.preset (16);
+        pl.prepare();
+        pl.processor().setForceAwake (force == 1);
+        y[force] = pl.render (g);
+    }
+    const double part1 = diffDb (y[0], y[1], g, 0, g.size());
+
+    // Part 2. Preset 16 has Delay and Mod at 0; they start at 50 % here so
+    // that taking them to 0 and back exercises their sleep.
+    const int block = 512;
+    const size_t perSecond = (size_t) (fs / block);
+    const char* gens[] = { ids::spread_amount, ids::delay_amount, ids::mod_amount, ids::velvet_amount };
+    std::vector<Automation> events;
+    std::vector<std::pair<size_t, size_t>> windows;
+    float restore[4] = { 30.0f, 50.0f, 50.0f, 40.0f };
+    for (int i = 0; i < 4; ++i)
+    {
+        const size_t off = perSecond * (size_t) (1 + 2 * i), on = off + perSecond;
+        events.push_back ({ off, gens[i], 0.0f });
+        events.push_back ({ on, gens[i], restore[i] });
+        const size_t wake = on * (size_t) block;
+        windows.push_back ({ wake + (size_t) samples (0.150, fs), (on + perSecond) * (size_t) block });
+    }
+    const Signal x = noise ((int) (perSecond * 10 * block));
+    Stereo z[2];
+    for (int force = 0; force < 2; ++force)
+    {
+        Plugin pl;
+        pl.preset (16);
+        pl.set (ids::delay_amount, 50);
+        pl.set (ids::mod_amount, 50);
+        pl.prepare();
+        pl.processor().setForceAwake (force == 1);
+        z[force] = renderAutomated (pl, x, events);
+    }
+    double part2 = -1e9;
+    std::string per;
+    for (size_t i = 0; i < windows.size(); ++i)
+    {
+        const double d = diffDb (z[0], z[1], x, windows[i].first, windows[i].second);
+        part2 = std::max (part2, d);
+        per += (i ? ", " : "") + fmtDb (d);
+    }
+    r.pass = part1 <= -100.0 && part2 <= -80.0;
+    r.measured = "part 1 " + fmtDb (part1) + "; part 2 Spread/Delay/Mod/Velvet " + per;
+    return r;
+}
+
+Result t18SmartDisableSaves()
+{
+    Result r { "T18", "Preset 16, 20 s renders, median of 5: silent input <= 0.2 x the time of noise; all amounts 0 with noise <= 0.2 x", "", false, true, "" };
+    const double fs = 48000.0;
+    const Signal n = noise (samples (20.0, fs));
+    const Signal silence ((size_t) samples (20.0, fs), 0.0f);
+    std::vector<double> tNoise, tSilent, tZero;
+    for (int run = 0; run < 5; ++run)
+    {
+        {
+            Plugin pl;
+            pl.preset (16);
+            pl.prepare();
+            tNoise.push_back (timeRender (pl, n));
+        }
+        {
+            Plugin pl;
+            pl.preset (16);
+            pl.prepare();
+            tSilent.push_back (timeRender (pl, silence));
+        }
+        {
+            Plugin pl;
+            pl.preset (16);
+            for (const char* id : { ids::spread_amount, ids::delay_amount, ids::mod_amount, ids::velvet_amount, ids::pan_amount })
+                pl.set (id, 0);
+            pl.prepare();
+            tZero.push_back (timeRender (pl, n));
+        }
+    }
+    const double a = medianOf (tNoise), b = medianOf (tSilent), c = medianOf (tZero);
+    r.pass = b <= 0.2 * a && c <= 0.2 * a;
+    r.measured = "noise " + fmt (a, 3) + " s; silent " + fmt (b, 3) + " s (" + fmt (b / a, 3) + "x); all amounts 0 "
+                 + fmt (c, 3) + " s (" + fmt (c / a, 3) + "x)";
+    return r;
+}
+
+Result t19NoAllocation()
+{
+    Result r { "T19", "Allocations inside processBlock, presets 1, 14, 16 with parameter automation: count is 0", "", false, false, "" };
+    long total = 0;
+    for (int preset : { 1, 14, 16 })
+    {
+        Plugin pl;
+        pl.preset (preset);
+        pl.prepare();
+        const Signal x = mix (pl.fs);
+        juce::AudioBuffer<float> buf (2, pl.block);
+        juce::MidiBuffer midi;
+        Rng rng (77u + (uint32_t) preset);
+        // Every automatable parameter is moved, one per block, in turn.
+        size_t blockIndex = 0;
+        for (size_t pos = 0; pos + (size_t) pl.block <= x.size(); pos += (size_t) pl.block, ++blockIndex)
+        {
+            const char* id = ids::all[blockIndex % (size_t) numParameters];
+            if (juce::String (id) != ids::engine)
+                pl.setNormalised (id, (float) rng.uniform());
+            buf.clear();
+            buf.copyFrom (0, 0, x.data() + pos, pl.block);
+            sph::test::allocCount.store (0);
+            sph::test::allocCounting.store (true);
+            pl.processor().processBlock (buf, midi);
+            sph::test::allocCounting.store (false);
+            total += sph::test::allocCount.load();
+        }
+    }
+    r.pass = total == 0;
+    r.measured = std::to_string (total) + " allocations";
+    return r;
+}
+
+Result t20NoDenormals()
+{
+    Result r { "T20", "forceAwake, preset 16, noise 1 s then silence 5 s: no output sample with 0 < |x| < 1e-30", "", false, false, "" };
+    Plugin pl;
+    pl.preset (16);
+    pl.prepare();
+    pl.processor().setForceAwake (true);
+    Signal x = noise (samples (6.0, pl.fs));
+    std::fill (x.begin() + samples (1.0, pl.fs), x.end(), 0.0f);
+    const auto y = pl.render (x);
+    long bad = 0;
+    float smallest = 1.0f;
+    for (const auto* ch : { &y.l, &y.r })
+        for (float v : *ch)
+        {
+            const float a = std::abs (v);
+            if (a > 0.0f && a < 1.0e-30f)
+                ++bad;
+            if (a > 0.0f)
+                smallest = std::min (smallest, a);
+        }
+    r.pass = bad == 0;
+    r.measured = std::to_string (bad) + " samples; smallest non-zero magnitude " + fmt (smallest > 0 ? std::log10 (smallest) * 20.0 : 0.0, 0) + " dBFS";
     return r;
 }
 

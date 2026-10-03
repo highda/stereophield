@@ -69,3 +69,11 @@ Dated list of choices not dictated by `DESIGN.md`, and every fallback applied.
 - The T13 group-membership count uses, for each of the 16 partials, the nearest track within 3 % and the group it belongs to in the majority of frames from 1.5 to 2.5 s; group A or B is the active group whose `f0` is within 3 % of 220 or 277.18 Hz. Harmonic energy is summed within +-3 Hz of each harmonic over 2^16 samples from 1.5 s plus the latency.
 - Pan-mode changes fade the Pan map output, then switch and reset its tracking at the next block boundary.
 - Display data is the smoothed pan and the masked magnitude at the bin nearest each of 128 log-spaced frequencies, published as relaxed atomics once per frame; the user interface weights brightness by magnitude.
+
+### Phase 6
+
+- A freshly reset `SleepController` counts as having seen an infinitely long silence, so a module can sleep from the first silent block. A module sleeps for silence only if its input was already silent for its required span before the block and the block itself is silent; the tail it was still producing is never cut.
+- T17 part 2: preset 16 has Delay and Mod at 0 %, so taking them "to 0 and back" would not exercise their sleep, and Mod's `advanceWhileAsleep` would go untested. Part 2 starts from preset 16 with `delay_amount` and `mod_amount` at 50 %; each of the four amounts in turn goes to 0 for 1 s and returns to its starting value, with 1 s between events. Differences are measured as the energy of the left and right difference relative to the input.
+- T17 measures exactly zero difference in both parts. With FTZ and deterministic double-precision state, the filters that were reset converge bit-for-bit to the never-slept state about 50 ms after a wake (the probe saw non-zero differences only in the first 20 ms), and after the 3 s gap every state has decayed to exact zero.
+- T19 replaces global `operator new` and `operator delete` (all forms) in `sph_plugin_tests` and `sph_measure`; both allocations and frees count while the flag is set around `processBlock`. Automation moves one parameter per block, in turn, to a random value; `engine` is excluded because it is not automatable.
+- Timing tests use `juce::Time::getMillisecondCounterHiRes` around offline renders in the Release build, median of five.
