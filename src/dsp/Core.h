@@ -11,6 +11,7 @@
 #include "dsp/Params.h"
 #include "dsp/ProcessSpec.h"
 #include "dsp/RoomCues.h"
+#include "dsp/ScopeTaps.h"
 #include "dsp/SideBus.h"
 #include "dsp/SleepController.h"
 #include "dsp/Spread.h"
@@ -76,6 +77,8 @@ public:
     bool forceAwake = false;
 
     Meters meters;
+    ScopeTaps scopes;     // V1, read by the interface
+    OutputRing outputRing; // V6 and V7, read by the interface
 
     // Read-only test hooks.
     const SleepController& sleepController (GeneratorId g) const noexcept { return slots[(size_t) g].sleep; }
@@ -140,7 +143,7 @@ private:
     std::array<std::vector<float>, 4> history;
     int historyPos = 0;
     float fadeTrack = 0.0f;
-    std::vector<float> preIn, preS, preM, sOld, mOld, fullW;
+    std::vector<float> preIn, preS, preM, sOld, mOld, fullW, tapTmp, tapTmp2, guardGain, transientBus;
     template <typename G> void startSwitch (GenPair<G>& pair);
     template <typename G> void preRoll (G& g, Source src);
     RoomCues roomGen;

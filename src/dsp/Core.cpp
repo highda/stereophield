@@ -64,8 +64,10 @@ void Core::prepare (const ProcessSpec& s, const Params& p)
     side.prepare (spec);
     out.prepare (spec);
     meters.prepare (fs);
+    scopes.prepare (fs);
+    outputRing.prepare();
 
-    for (auto* v : { &m, &sIn, &mD, &sInD, &e, &tonal, &noise, &tonalNoise, &panSide, &panPost, &cohSide, &sExp, &ratio, &preS, &preM, &sOld, &mOld, &fullW, &sBus, &dBus, &sTmp, &mTmp, &sSyn, &mOut, &outTmpL, &outTmpR })
+    for (auto* v : { &m, &sIn, &mD, &sInD, &e, &tonal, &noise, &tonalNoise, &panSide, &panPost, &cohSide, &sExp, &ratio, &preS, &preM, &sOld, &mOld, &fullW, &tapTmp, &tapTmp2, &guardGain, &transientBus, &sBus, &dBus, &sTmp, &mTmp, &sSyn, &mOut, &outTmpL, &outTmpR })
         v->assign ((size_t) spec.maxBlockSize, 0.0f);
 
     engineFadeLen = std::max (1, (int) std::lround (0.020 * fs));
@@ -337,6 +339,21 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         mD[(size_t) i] = alignM.readInt (latency);
         sInD[(size_t) i] = alignS.readInt (latency);
     }
+    // Input taps, on the output time axis (already delayed by the latency).
+    if (scopes.enabled (ScopeTaps::inL) || scopes.enabled (ScopeTaps::inR))
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            tapTmp[(size_t) i] = mD[(size_t) i] + sInD[(size_t) i];
+            tapTmp2[(size_t) i] = mD[(size_t) i] - sInD[(size_t) i];
+        }
+        scopes.write (ScopeTaps::inL, tapTmp.data(), n);
+        scopes.write (ScopeTaps::inR, tapTmp2.data(), n);
+    }
+    if (scopes.enabled (ScopeTaps::inM))
+        scopes.write (ScopeTaps::inM, mD.data(), n);
+    if (scopes.enabled (ScopeTaps::inS))
+        scopes.write (ScopeTaps::inS, sInD.data(), n);
     const float peakM = PeakScanner::peak (m.data(), n);
     const float peakMd = PeakScanner::peak (mD.data(), n);
 
@@ -475,10 +492,12 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
             side.spectralWeights (analyser.panMap().weights(), analyser.numBins(), analyser.fftSize());
         analyser.coherence().setParams (params);
         analyser.expander().setParams (params);
-        const Analysis::Needs needs { stages, stages && needTonal, stages && needNoise, false, stages && panAwake,
+        const bool tapTransient = scopes.enabled (ScopeTaps::busTransient);
+        const Analysis::Needs needs { stages, stages && needTonal, stages && needNoise, stages && tapTransient, stages && panAwake,
                                       stages && cohAwake, stages && expanderOn,
                                       stages && params.transientMode == TransientMode::SpectralFlux };
-        analyser.process (m.data(), n, needs, tonal.data(), noise.data(), nullptr, panSide.data(), cohSide.data(),
+        analyser.process (m.data(), n, needs, tonal.data(), noise.data(), tapTransient ? transientBus.data() : nullptr,
+                          panSide.data(), cohSide.data(),
                           expanderOn ? sIn.data() : nullptr, sExp.data());
         if (expanderOn)
             for (int i = 0; i < n; ++i)
@@ -494,6 +513,15 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         if (full)
             buses = { mD.data(), tonal.data(), noise.data(), tonalNoise.data() };
     }
+
+    if (scopes.enabled (ScopeTaps::busFull))
+        scopes.write (ScopeTaps::busFull, buses.full, n);
+    if (full && scopes.enabled (ScopeTaps::busTonal))
+        scopes.write (ScopeTaps::busTonal, buses.tonal, n);
+    if (full && scopes.enabled (ScopeTaps::busNoise))
+        scopes.write (ScopeTaps::busNoise, buses.noise, n);
+    if (full && scopes.enabled (ScopeTaps::busTransient))
+        scopes.write (ScopeTaps::busTransient, transientBus.data(), n);
 
     // Bus history for pre-rolling switched instances.
     {
@@ -582,13 +610,19 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     std::fill (dBus.begin(), dBus.begin() + n, 0.0f);
     auto accumulate = [&] (Slot& slot, const float* s, const float* md)
     {
+        const int tap = ScopeTaps::genSpread + (int) (&slot - slots.data());
+        const bool tapped = scopes.enabled (tap);
         for (int i = 0; i < n; ++i)
         {
             const float a = slot.amount.getNextValue();
             sBus[(size_t) i] += a * s[i];
+            if (tapped)
+                tapTmp[(size_t) i] = a * s[i];
             if (md != nullptr)
                 dBus[(size_t) i] += a * md[i];
         }
+        if (tapped)
+            scopes.write (tap, tapTmp.data(), n);
     };
     awakeMask = 0;
     // Runs a generator pair: the current instance, and while crossfading the
@@ -687,7 +721,7 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     const bool sideAwake = sideSleep.update (false, sidePeak, n, side.tailSamples(), forceAwake);
     if (sideAwake)
         side.process (sBus.data(), panOut ? panPost.data() : nullptr, dBus.data(), e.data(), mD.data(),
-                      sSyn.data(), mOut.data(), n);
+                      sSyn.data(), mOut.data(), n, scopes.enabled (ScopeTaps::envGuard) ? guardGain.data() : nullptr);
     else
     {
         if (sideSleep.justFellAsleep())
@@ -695,6 +729,19 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         side.advanceWhileAsleep (n);
         std::fill (sSyn.begin(), sSyn.begin() + n, 0.0f);
         std::copy (mD.begin(), mD.begin() + n, mOut.begin());
+    }
+
+    if (scopes.enabled (ScopeTaps::sideBus))
+        scopes.write (ScopeTaps::sideBus, sBus.data(), n);
+    if (scopes.enabled (ScopeTaps::sideSyn))
+        scopes.write (ScopeTaps::sideSyn, sSyn.data(), n);
+    if (scopes.enabled (ScopeTaps::envDuck))
+        scopes.write (ScopeTaps::envDuck, e.data(), n);
+    if (scopes.enabled (ScopeTaps::envGuard))
+    {
+        if (! sideAwake)
+            std::fill (guardGain.begin(), guardGain.begin() + n, 1.0f);
+        scopes.write (ScopeTaps::envGuard, guardGain.data(), n);
     }
 
     // 8. Output stage.
@@ -714,6 +761,23 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     }
 
     meters.process (outL, outR, n);
+    scopes.setActivity (awakeMask | (analyserSleep.isAsleep() ? 0u : 1u << 16) | (sideAwake ? 1u << 17 : 0u)
+                        | (detectorSleep.isAsleep() ? 0u : 1u << 18));
+    scopes.write (ScopeTaps::outL, outL, n); // always: it also records the activity
+    if (scopes.enabled (ScopeTaps::outR))
+        scopes.write (ScopeTaps::outR, outR, n);
+    if (scopes.enabled (ScopeTaps::outM) || scopes.enabled (ScopeTaps::outS))
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            tapTmp[(size_t) i] = 0.5f * (outL[i] + outR[i]);
+            tapTmp2[(size_t) i] = 0.5f * (outL[i] - outR[i]);
+        }
+        scopes.write (ScopeTaps::outM, tapTmp.data(), n);
+        scopes.write (ScopeTaps::outS, tapTmp2.data(), n);
+    }
+    if (outputRing.enabled())
+        outputRing.push (outL, outR, mD.data(), n);
 
     // Host tail (DESIGN.md section 7.5).
     // A spectral bus outlasts its input by a further N samples.

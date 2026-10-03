@@ -117,7 +117,7 @@ void SideBus::spectralWeights (float* w, int numBins, int fftSize) const noexcep
 }
 
 void SideBus::process (const float* sBus, const float* sPost, const float* dBus, const float* e, const float* mD,
-                       float* sSyn, float* mOut, int numSamples) noexcept
+                       float* sSyn, float* mOut, int numSamples, float* guardOut) noexcept
 {
     int done = 0;
     while (done < numSamples)
@@ -191,6 +191,8 @@ void SideBus::process (const float* sBus, const float* sPost, const float* dBus,
                 g = 1.0f + wG * ((float) guardG.process (target) - 1.0f);
             }
             sSyn[i] = flushTiny (g * sw);
+            if (guardOut != nullptr)
+                guardOut[i] = g;
             mOut[i] = mo;
         }
 

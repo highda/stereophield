@@ -38,6 +38,8 @@ Result p2t26SeamlessChanges();
 Result p2t27ConstantLatency();
 Result p2t29SoftOwnership();
 Result p2t22RoomMonoSafe();
+Result p2t9ScopeCorrectness();
+Result p2t10ScopeCost();
 Result p2t23ImageRemap();
 Result p2t24ImageMonoSafe();
 

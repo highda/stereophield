@@ -30,7 +30,7 @@ public:
     // bass-mono and band responses are applied in the spectrum without phase
     // shift (see spectralWeights).
     void process (const float* sBus, const float* sPost, const float* dBus, const float* e, const float* mD,
-                  float* sSyn, float* mOut, int numSamples) noexcept;
+                  float* sSyn, float* mOut, int numSamples, float* guardOut = nullptr) noexcept;
 
     // Zero-phase equivalent of steps 1 and 2 for bin frequencies k * fs / n:
     // the magnitude of the bass-mono high-pass times the band-gain blend of

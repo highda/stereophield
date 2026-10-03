@@ -5,6 +5,7 @@
 #include "ui/PluginEditor.h"
 #include "dsp/ImageExpander.h"
 #include "dsp/Loudness.h"
+#include "dsp/ScopeTaps.h"
 #include "dsp/Stft.h"
 #include "dsp/StereoBands.h"
 #include "dsp/VirtualListener.h"
@@ -621,13 +622,18 @@ Result t18SmartDisableSaves()
 
 Result t19NoAllocation()
 {
-    Result r { "T19", "Allocations inside processBlock, presets 1, 14, 16 with parameter automation: count is 0", "", false, false, "" };
+    Result r { "T19", "Allocations inside processBlock, presets 1, 14, 16 with parameter automation, every Part 2 generator awake and every scope tap enabled: count is 0", "", false, false, "" };
     long total = 0;
     for (int preset : { 1, 14, 16 })
     {
         Plugin pl;
         pl.preset (preset);
+        for (const char* id : { ids::coh_amount, ids::dbl_amount, ids::room_amount })
+            pl.set (id, 50);
         pl.prepare();
+        for (int t = 0; t < ScopeTaps::numTaps; ++t)
+            pl.core().scopes.setEnabled (t, true);
+        pl.core().outputRing.setEnabled (true);
         const Signal x = mix (pl.fs);
         juce::AudioBuffer<float> buf (2, pl.block);
         juce::MidiBuffer midi;
@@ -1606,6 +1612,100 @@ Result p2t24ImageMonoSafe()
     const bool active = pl.core().expanderActive();
     r.pass = db <= -120.0 && active;
     r.measured = fmtDb (db) + (active ? "" : " (expander not active)");
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+Result p2t9ScopeCorrectness()
+{
+    Result r { "P2-T9", "Scope taps on mix: input and output taps equal the min/max columns of the offline signals within 1e-6; bus.full equals in.M, side.syn equals out.S (mono input, Mono-exact, 0 dB), env.duck and env.guard stay within [0, 1]", "", true, false, "" };
+    Plugin pl;
+    pl.set (ids::engine, 1);
+    pl.set (ids::pan_amount, 50);
+    pl.prepare();
+    auto& sc = pl.core().scopes;
+    for (int t = 0; t < ScopeTaps::numTaps; ++t)
+        sc.setEnabled (t, true);
+    const Signal x = mix (pl.fs);
+    const auto y = pl.render (x);
+    const int c = sc.samplesPerColumn();
+    const int lat = pl.latency();
+    auto offline = [&] (int tap, size_t i) -> double
+    {
+        const double in = i >= (size_t) lat ? x[i - (size_t) lat] : 0.0;
+        switch (tap)
+        {
+            case ScopeTaps::inL: case ScopeTaps::inR: case ScopeTaps::inM: return in;
+            case ScopeTaps::inS: return 0.0;
+            case ScopeTaps::outL: return y.l[i];
+            case ScopeTaps::outR: return y.r[i];
+            case ScopeTaps::outM: return (float) (0.5f * (y.l[i] + y.r[i]));
+            case ScopeTaps::outS: return (float) (0.5f * (y.l[i] - y.r[i]));
+            default: return 0.0;
+        }
+    };
+    double worst = 0.0;
+    int64_t columns = 0;
+    for (int tap : { (int) ScopeTaps::inL, (int) ScopeTaps::inR, (int) ScopeTaps::inM, (int) ScopeTaps::inS,
+                     (int) ScopeTaps::outL, (int) ScopeTaps::outR, (int) ScopeTaps::outM, (int) ScopeTaps::outS })
+    {
+        const int64_t n = std::min<int64_t> (sc.columnsWritten (tap), ScopeTaps::ringColumns);
+        const int64_t first = sc.columnsWritten (tap) - n;
+        for (int64_t col = first; col < sc.columnsWritten (tap); ++col)
+        {
+            double lo = 1e30, hi = -1e30;
+            for (size_t i = (size_t) (col * c); i < (size_t) ((col + 1) * c); ++i)
+            {
+                lo = std::min (lo, offline (tap, i));
+                hi = std::max (hi, offline (tap, i));
+            }
+            worst = std::max ({ worst, std::abs (sc.columnMin (tap, col) - lo), std::abs (sc.columnMax (tap, col) - hi) });
+            ++columns;
+        }
+    }
+    // Identities between internal and external taps.
+    double ident = 0.0;
+    bool bounded = true;
+    const int64_t last = sc.columnsWritten (ScopeTaps::outS);
+    for (int64_t col = std::max<int64_t> (0, last - 1000); col < last; ++col)
+    {
+        ident = std::max ({ ident, (double) std::abs (sc.columnMin (ScopeTaps::busFull, col) - sc.columnMin (ScopeTaps::inM, col)),
+                            (double) std::abs (sc.columnMax (ScopeTaps::sideSyn, col) - sc.columnMax (ScopeTaps::outS, col)) });
+        for (int tap : { (int) ScopeTaps::envDuck, (int) ScopeTaps::envGuard })
+            bounded = bounded && sc.columnMin (tap, col) >= 0.0f && sc.columnMax (tap, col) <= 1.0f;
+    }
+    r.pass = worst <= 1e-6 && ident <= 1e-6 && bounded;
+    r.measured = std::to_string (columns) + " columns; worst error " + fmt (worst * 1e9, 2) + " x 1e-9; identities " + fmt (ident * 1e9, 2)
+                 + " x 1e-9; envelopes " + (bounded ? "within [0, 1]" : "out of range");
+    return r;
+}
+
+Result p2t10ScopeCost()
+{
+    Result r { "P2-T10", "Preset 16, 60 s of mix: all scope taps enabled cost at most 2 % of real time more than none (at most 0.15 % per tap), median of 5", "", false, true, "" };
+    const Signal x = tile (mix (48000.0), samples (60.0, 48000.0));
+    auto run = [&] (bool taps)
+    {
+        std::vector<double> t;
+        for (int i = 0; i < 5; ++i)
+        {
+            Plugin pl;
+            pl.preset (16);
+            pl.prepare();
+            for (int k = 0; k < ScopeTaps::numTaps; ++k)
+                pl.core().scopes.setEnabled (k, taps);
+            pl.core().outputRing.setEnabled (taps);
+            t.push_back (timeRender (pl, x));
+        }
+        return medianOf (t);
+    };
+    const double with = run (true), without = run (false);
+    const double pct = 100.0 * (with - without) / 60.0;
+    r.pass = pct <= 2.0 && pct / (double) ScopeTaps::numTaps <= 0.15;
+    r.measured = fmt (pct, 3) + " % of real time for " + std::to_string ((int) ScopeTaps::numTaps) + " taps and the output ring ("
+                 + fmt (pct / (double) ScopeTaps::numTaps, 4) + " % per tap)";
     return r;
 }
 } // namespace sph::measure
