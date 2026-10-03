@@ -13,3 +13,6 @@
 SPH_MEASURE_TEST (t7ChorusAntiPhase, "T7 chorus anti-phase", "[T7]")
 SPH_MEASURE_TEST (t8MicroPitch, "T8 micro-pitch accuracy", "[T8]")
 SPH_MEASURE_TEST (t9Velvet, "T9 velvet decorrelation", "[T9]")
+SPH_MEASURE_TEST (t10BusesSum, "T10 component buses sum to input", "[T10]")
+SPH_MEASURE_TEST (t11SplitQuality, "T11 split quality", "[T11]")
+SPH_MEASURE_TEST (t12Ambience, "T12 ambience split", "[T12]")

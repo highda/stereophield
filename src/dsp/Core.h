@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/Analysis.h"
 #include "dsp/Buses.h"
 #include "dsp/DelayLine.h"
 #include "dsp/HaasDelay.h"
@@ -67,6 +68,8 @@ public:
     const Mod& mod() const noexcept { return modGen; }
     const Velvet& velvet() const noexcept { return velvetGen; }
     const SideBus& sideBus() const noexcept { return side; }
+    const Analysis& analysis() const noexcept { return analyser; }
+    const SleepController& analysisSleep() const noexcept { return analyserSleep; }
     const OutputStage& output() const noexcept { return out; }
     // Generators processed in the last block, as a bit mask over GeneratorId.
     unsigned lastAwakeMask() const noexcept { return awakeMask; }
@@ -95,6 +98,8 @@ private:
     bool engineSwitching = false;
 
     DelayLine alignM, alignS, eDelay;
+    Analysis analyser;
+    SleepController analyserSleep;
     TransientDetector detector;
     SleepController detectorSleep;
     Spread spreadGen;
@@ -106,7 +111,7 @@ private:
     SleepController sideSleep;
     OutputStage out;
 
-    std::vector<float> m, sIn, mD, sInD, e, sBus, dBus, sTmp, mTmp, sSyn, mOut, outTmpL, outTmpR;
+    std::vector<float> m, sIn, mD, sInD, e, tonal, noise, tonalNoise, sBus, dBus, sTmp, mTmp, sSyn, mOut, outTmpL, outTmpR;
 
     std::atomic<double> tail { 0.0 };
     unsigned awakeMask = 0;

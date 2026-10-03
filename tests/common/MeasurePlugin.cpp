@@ -210,6 +210,40 @@ Result t6Haas()
     return r;
 }
 
+namespace
+{
+// Side energy of the spread-only toneClick render in [clickAt + from, clickAt + to).
+double sideEnergyAroundClick (int engine, float duck, double fromMs, double toMs)
+{
+    Plugin pl;
+    pl.set (ids::engine, (float) engine);
+    pl.set (ids::transient_duck, duck);
+    pl.prepare();
+    const Signal x = toneClick (pl.fs);
+    const auto y = pl.render (x);
+    const long click = samples (1.0, pl.fs) + pl.latency();
+    const long a = click + (long) std::lround (fromMs * 0.001 * pl.fs);
+    const long b = click + (long) std::lround (toMs * 0.001 * pl.fs);
+    double e = 0.0;
+    for (long i = a; i < b; ++i)
+    {
+        const double s = 0.5 * ((double) y.l[(size_t) i] - y.r[(size_t) i]);
+        e += s * s;
+    }
+    return e;
+}
+} // namespace
+
+Result t15TransientCentring()
+{
+    Result r { "T15", "toneClick, Spread only, duck 100 % vs 0: side energy -1..+5 ms around the click >= 20 dB lower (Full); +0.5..+5 ms >= 10 dB lower (Light)", "", false, true, "" };
+    const double full = 10.0 * std::log10 (sideEnergyAroundClick (1, 0, -1.0, 5.0) / sideEnergyAroundClick (1, 100, -1.0, 5.0));
+    const double light = 10.0 * std::log10 (sideEnergyAroundClick (0, 0, 0.5, 5.0) / sideEnergyAroundClick (0, 100, 0.5, 5.0));
+    r.pass = full >= 20.0 && light >= 10.0;
+    r.measured = "Full " + fmt (full) + " dB lower, Light " + fmt (light) + " dB lower";
+    return r;
+}
+
 Result t16Guard()
 {
     Result r { "T16", "All generators at 100 %, width 200 %, guard On, noise: correlation of every 100 ms window after 500 ms >= -0.1", "", false, true, "" };

@@ -9,4 +9,7 @@ Result t1StftIdentity();
 Result t7ChorusAntiPhase();
 Result t8MicroPitch();
 Result t9Velvet();
+Result t10BusesSum();
+Result t11SplitQuality();
+Result t12Ambience();
 } // namespace sph::measure

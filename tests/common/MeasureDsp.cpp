@@ -1,6 +1,7 @@
 #include "common/MeasureDsp.h"
 
 #include "common/SignalMath.h"
+#include "dsp/Analysis.h"
 #include "dsp/Mod.h"
 #include "dsp/Stft.h"
 #include "dsp/Velvet.h"
@@ -230,6 +231,127 @@ Result t9Velvet()
     r.pass = std::abs (corr) <= 0.25 && std::abs (rl) <= 1.0 && std::abs (rr) <= 1.0 && worstBand <= 5.0;
     r.measured = "corr " + fmt (corr, 3) + "; RMS L " + fmt (rl, 2) + " dB, R " + fmt (rr, 2)
                  + " dB; worst third-octave deviation " + fmt (worstBand, 2) + " dB";
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+namespace
+{
+struct BusRender
+{
+    Signal tonal, noise, transient;
+};
+
+// Runs the analysis over x. perFrame(analysis, centreSeconds) is called after
+// every analysed frame.
+template <typename PerFrame>
+BusRender runAnalysis (const Signal& x, double fs, double ambience, double decay, PerFrame&& perFrame)
+{
+    Analysis a;
+    a.prepare (fs);
+    a.setParams (ambience, decay);
+    BusRender out { Signal (x.size()), Signal (x.size()), Signal (x.size()) };
+    const Analysis::Needs needs { true, true, true, true };
+    const int n = a.fftSize();
+    for (size_t i = 0; i < x.size(); ++i)
+    {
+        const int before = a.framesAnalysed();
+        a.process (&x[i], 1, needs, &out.tonal[i], &out.noise[i], &out.transient[i]);
+        if (a.framesAnalysed() != before)
+            perFrame (a, ((double) i - n / 2 + 0.5) / fs);
+    }
+    return out;
+}
+
+BusRender runAnalysis (const Signal& x, double fs, double ambience, double decay)
+{
+    return runAnalysis (x, fs, ambience, decay, [] (const Analysis&, double) {});
+}
+
+// RMS level of y relative to x over [from, end), in dB.
+double levelDb (const Signal& y, const Signal& x, size_t from)
+{
+    return toDb (rms (y.data() + from, y.size() - from) / rms (x.data() + from, x.size() - from));
+}
+} // namespace
+
+Result t10BusesSum()
+{
+    Result r { "T10", "Full analysis on mix: tonal + transient + noise - input delayed by Lat <= -90 dB", "", false, false, "" };
+    const double fs = 48000.0;
+    const Signal x = mix (fs);
+    const auto b = runAnalysis (x, fs, 0.5, 1.0);
+    const int lat = Stft::fftSizeForRate (fs);
+    Signal sum (x.size());
+    for (size_t i = 0; i < x.size(); ++i)
+        sum[i] = b.tonal[i] + b.noise[i] + b.transient[i];
+    const double db = sph::test::errorDb (sum, x, 1.0, lat, x, (size_t) (2 * lat), x.size());
+    r.pass = db <= -90.0;
+    r.measured = fmtDb (db);
+    return r;
+}
+
+Result t11SplitQuality()
+{
+    Result r { "T11", "ambience 0. sine(440): tonal within 1 dB, others <= -20 dB. clicks: transient >= 10 dB above others. noise: noise >= 3 dB above others", "", true, true, "" };
+    const double fs = 48000.0;
+    const size_t from = (size_t) samples (1.0, fs);
+    const int len = samples (4.0, fs);
+
+    const Signal s = sine (440.0, len, fs);
+    const auto bs = runAnalysis (s, fs, 0.0, 1.0);
+    const double sT = levelDb (bs.tonal, s, from), sN = levelDb (bs.noise, s, from), sX = levelDb (bs.transient, s, from);
+    const bool sineOk = std::abs (sT) <= 1.0 && sN <= -20.0 && sX <= -20.0;
+
+    const Signal c = clicks (len, fs);
+    const auto bc = runAnalysis (c, fs, 0.0, 1.0);
+    const double cT = levelDb (bc.tonal, c, from), cN = levelDb (bc.noise, c, from), cX = levelDb (bc.transient, c, from);
+    const bool clicksOk = cX - cT >= 10.0 && cX - cN >= 10.0;
+
+    const Signal w = noise (len);
+    const auto bw = runAnalysis (w, fs, 0.0, 1.0);
+    const double wT = levelDb (bw.tonal, w, from), wN = levelDb (bw.noise, w, from), wX = levelDb (bw.transient, w, from);
+    const bool noiseOk = wN - wT >= 3.0 && wN - wX >= 3.0;
+
+    r.pass = sineOk && clicksOk && noiseOk;
+    r.measured = "sine T/N/X " + fmt (sT) + "/" + fmt (sN) + "/" + fmt (sX) + " dB" + (sineOk ? "" : " (fail)")
+                 + "; clicks " + fmt (cT) + "/" + fmt (cN) + "/" + fmt (cX) + " dB" + (clicksOk ? "" : " (fail)")
+                 + "; noise " + fmt (wT) + "/" + fmt (wN) + "/" + fmt (wX) + " dB" + (noiseOk ? "" : " (fail)");
+    return r;
+}
+
+Result t12Ambience()
+{
+    Result r { "T12", "decayTone, ambience 100 %, decay 1 s: magnitude-weighted mean of ma <= 0.1 over 0.3-1.0 s and >= 0.3 over 1.1-1.8 s", "", false, true, "" };
+    const double fs = 48000.0;
+    const Signal x = decayTone (fs);
+    double steadyNum = 0, steadyDen = 0, decayNum = 0, decayDen = 0;
+    runAnalysis (x, fs, 1.0, 1.0, [&] (const Analysis& a, double t)
+    {
+        const auto& mag = a.magnitudes();
+        const auto& ma = a.ambienceMask();
+        double num = 0, den = 0;
+        for (size_t k = 0; k < mag.size(); ++k)
+        {
+            num += (double) mag[k] * ma[k];
+            den += mag[k];
+        }
+        if (t >= 0.3 && t <= 1.0)
+        {
+            steadyNum += num;
+            steadyDen += den;
+        }
+        else if (t >= 1.1 && t <= 1.8)
+        {
+            decayNum += num;
+            decayDen += den;
+        }
+    });
+    const double steady = steadyNum / steadyDen, dec = decayNum / decayDen;
+    r.pass = steady <= 0.1 && dec >= 0.3;
+    r.measured = "steady " + fmt (steady, 3) + ", decaying " + fmt (dec, 3);
     return r;
 }
 } // namespace sph::measure

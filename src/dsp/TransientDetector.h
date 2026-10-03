@@ -8,10 +8,10 @@ namespace sph
 class TransientDetector
 {
 public:
-    // Tunable constants.
-    static constexpr double ratioThreshold = 1.5;
-    static constexpr double ratioRange = 1.5;
-    static constexpr double holdSeconds = 0.040;
+    // Tunable constants (spec: 1.5, 1.5, 40 ms); see docs/DECISIONS.md, T15.
+    static constexpr double ratioThreshold = 2.2;
+    static constexpr double ratioRange = 0.6;
+    static constexpr double holdSeconds = 0.100;
 
     void prepare (double sampleRate)
     {

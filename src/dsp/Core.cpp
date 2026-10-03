@@ -27,6 +27,7 @@ void Core::prepare (const ProcessSpec& s, const Params& p)
     alignS.prepare (fftSize);
     eDelay.prepare (fftSize);
     detector.prepare (fs);
+    analyser.prepare (fs);
     spreadGen.prepare (spec);
     haasGen.prepare (spec);
     modGen.prepare (spec);
@@ -37,7 +38,7 @@ void Core::prepare (const ProcessSpec& s, const Params& p)
     out.prepare (spec);
     meters.prepare (fs);
 
-    for (auto* v : { &m, &sIn, &mD, &sInD, &e, &sBus, &dBus, &sTmp, &mTmp, &sSyn, &mOut, &outTmpL, &outTmpR })
+    for (auto* v : { &m, &sIn, &mD, &sInD, &e, &tonal, &noise, &tonalNoise, &sBus, &dBus, &sTmp, &mTmp, &sSyn, &mOut, &outTmpL, &outTmpR })
         v->assign ((size_t) spec.maxBlockSize, 0.0f);
 
     engineFadeLen = std::max (1, (int) std::lround (0.020 * fs));
@@ -81,6 +82,8 @@ void Core::resetAll()
     eDelay.reset();
     detector.reset();
     detectorSleep.reset();
+    analyser.resetAll();
+    analyserSleep.reset();
     spreadGen.reset();
     haasGen.reset();
     modGen.reset();
@@ -203,8 +206,38 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         slots[(size_t) g].amount.skip (n);
     }
 
-    // 4. Buses.
+    // 4. Analysis and buses. In the Light engine every bus is the mid.
     Buses buses { mD.data(), mD.data(), mD.data(), mD.data() };
+    if (full)
+    {
+        bool needTonal = false, needNoise = false;
+        auto need = [&] (GeneratorId g, Source a, Source b)
+        {
+            if (! slots[(size_t) g].awake)
+                return;
+            needTonal = needTonal || usesTonal (a) || usesTonal (b);
+            needNoise = needNoise || usesNoise (a) || usesNoise (b);
+        };
+        need (genSpread, spreadGen.active().source, spreadGen.pending().source);
+        need (genDelay, haasGen.active().source, haasGen.pending().source);
+        need (genMod, modGen.active().source, modGen.pending().source);
+        need (genVelvet, velvetGen.active().source, velvetGen.pending().source);
+
+        // The whole analysis sleeps when nobody consumes it, or when the mid
+        // has been silent for N samples plus 0.5 s.
+        const bool wanted = needTonal || needNoise;
+        const bool stages = analyserSleep.update (! wanted, peakM, n,
+                                                  fftSize + (int64_t) std::lround (0.5 * fs), forceAwake);
+        if (analyserSleep.justFellAsleep())
+            analyser.reset();
+        analyser.setParams (params.ambience, params.roomDecayS);
+        const Analysis::Needs needs { stages, stages && needTonal, stages && needNoise, false };
+        analyser.process (m.data(), n, needs, tonal.data(), noise.data(), nullptr);
+        if (needTonal && needNoise)
+            for (int i = 0; i < n; ++i)
+                tonalNoise[(size_t) i] = tonal[(size_t) i] + noise[(size_t) i];
+        buses = { mD.data(), tonal.data(), noise.data(), tonalNoise.data() };
+    }
 
     // 5. Transient detector.
     const bool detAwake = detectorSleep.update (side.duckIsZeroAndSettled() || allZeroGain, peakM, n,
@@ -311,15 +344,17 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     meters.process (outL, outR, n);
 
     // Host tail (DESIGN.md section 7.5).
+    // A spectral bus outlasts its input by a further N samples.
     int longest = 0;
-    if (slots[genSpread].awake)
-        longest = std::max (longest, spreadGen.tailSamples());
-    if (slots[genDelay].awake)
-        longest = std::max (longest, haasGen.tailSamples());
-    if (slots[genMod].awake)
-        longest = std::max (longest, modGen.tailSamples());
-    if (slots[genVelvet].awake)
-        longest = std::max (longest, velvetGen.tailSamples());
+    auto tailOf = [&] (GeneratorId g, Source src, int t)
+    {
+        if (slots[(size_t) g].awake)
+            longest = std::max (longest, t + (full && isSpectral (src) ? fftSize : 0));
+    };
+    tailOf (genSpread, spreadGen.active().source, spreadGen.tailSamples());
+    tailOf (genDelay, haasGen.active().source, haasGen.tailSamples());
+    tailOf (genMod, modGen.active().source, modGen.tailSamples());
+    tailOf (genVelvet, velvetGen.active().source, velvetGen.tailSamples());
     if (sideAwake)
         longest = std::max (longest, side.tailSamples());
     tail.store ((double) (longest + latency) / fs, std::memory_order_relaxed);

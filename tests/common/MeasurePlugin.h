@@ -9,6 +9,7 @@ Result t3Latency();
 Result t4SpreadFlat();
 Result t5SpreadComplementary();
 Result t6Haas();
+Result t15TransientCentring();
 Result t16Guard();
 Result t27Bypass();
 } // namespace sph::measure

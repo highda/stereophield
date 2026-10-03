@@ -47,9 +47,13 @@ public:
     // Never let modules sleep (DESIGN.md section 7.6). Tests only.
     void setForceAwake (bool on) noexcept { dsp.forceAwake = on; }
 
-    // Applies a pending latency change now; tests call this instead of
-    // running a message loop.
-    void flushLatencyUpdate() { handleUpdateNowIfNeeded(); }
+    // Applies the core's latency now; tests call this instead of running a
+    // message loop.
+    void flushLatencyUpdate()
+    {
+        cancelPendingUpdate();
+        setLatencySamples (dsp.latencySamples());
+    }
 
 private:
     void handleAsyncUpdate() override;
