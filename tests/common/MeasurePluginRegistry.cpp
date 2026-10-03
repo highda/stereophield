@@ -28,6 +28,12 @@ const std::vector<Entry>& registry()
         { "T18", t18SmartDisableSaves },
         { "T19", t19NoAllocation },
         { "T20", t20NoDenormals },
+        { "T21", t21Robustness },
+        { "T22", t22BlockSizeInvariance },
+        { "T23", t23StateRoundTrip },
+        { "T24", t24AuValidation },
+        { "T25", t25Performance },
+        { "T26", t26PresetSanity },
         { "T27", t27Bypass },
     };
     return entries;

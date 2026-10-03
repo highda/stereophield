@@ -85,6 +85,7 @@ void StereophieldProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     auto state = apvts.copyState();
     state.setProperty ("program", currentProgram, nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, dest);
 }

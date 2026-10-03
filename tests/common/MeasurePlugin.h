@@ -17,5 +17,11 @@ Result t17SmartDisableEquivalence();
 Result t18SmartDisableSaves();
 Result t19NoAllocation();
 Result t20NoDenormals();
+Result t21Robustness();
+Result t22BlockSizeInvariance();
+Result t23StateRoundTrip();
+Result t24AuValidation();
+Result t25Performance();
+Result t26PresetSanity();
 Result t27Bypass();
 } // namespace sph::measure

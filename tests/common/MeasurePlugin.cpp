@@ -669,6 +669,170 @@ Result t20NoDenormals()
     return r;
 }
 
+Result t21Robustness()
+{
+    Result r { "T21", "200 random parameter sets over block sizes 16/64/512/1024 and 44.1/48/96 kHz, mix: no NaN or infinity; output peak <= 4 x input peak x out_gain", "", true, false, "" };
+    const int blocks[] = { 16, 64, 512, 1024 };
+    double worst = 0.0;
+    int bad = 0;
+    for (int set = 0; set < 200; ++set)
+    {
+        const double fs = rates[set % 3];
+        const int block = blocks[(set / 3) % 4];
+        Plugin pl (fs, block);
+        randomise (pl, 5000u + (uint32_t) set);
+        pl.prepare();
+        const Signal x = mix (fs);
+        const auto y = pl.render (x);
+        if (! allFinite (y.l) || ! allFinite (y.r))
+        {
+            ++bad;
+            continue;
+        }
+        const double g = std::pow (10.0, pl.get (ids::out_gain_db) / 20.0);
+        const double ratio = std::max (peak (y.l), peak (y.r)) / (peak (x) * std::max (1.0, g));
+        worst = std::max (worst, ratio);
+    }
+    r.pass = bad == 0 && worst <= 4.0;
+    r.measured = std::to_string (bad) + " non-finite renders; worst peak ratio " + fmt (worst, 2);
+    return r;
+}
+
+Result t22BlockSizeInvariance()
+{
+    Result r { "T22", "Presets 1 and 14, mix, block 32 vs 1024: difference <= -100 dB", "", true, false, "" };
+    std::string text;
+    for (int preset : { 1, 14 })
+    {
+        Stereo y[2];
+        int i = 0;
+        for (int block : { 32, 1024 })
+        {
+            Plugin pl (48000.0, block);
+            pl.preset (preset);
+            pl.prepare();
+            y[i++] = pl.render (mix (pl.fs));
+        }
+        const Signal x = mix (48000.0);
+        const double d = diffDb (y[0], y[1], x, 0, x.size());
+        r.pass = r.pass && d <= -100.0;
+        text += (text.empty() ? "preset " : ", preset ") + std::to_string (preset) + " " + fmtDb (d);
+    }
+    r.measured = text;
+    return r;
+}
+
+Result t23StateRoundTrip()
+{
+    Result r { "T23", "Random parameter set, save state, load into a new instance: every parameter equal; rendered output identical", "", true, false, "" };
+    int unequal = 0;
+    double worst = -1e9;
+    for (uint32_t set = 0; set < 5; ++set)
+    {
+        Plugin a, b;
+        randomise (a, 9000u + set);
+        juce::MemoryBlock state;
+        a.processor().getStateInformation (state);
+        b.processor().setStateInformation (state.getData(), (int) state.getSize());
+        // Compared as the plain values the DSP reads, with JUCE's own
+        // equality: its state adapter ignores changes within about one float
+        // step, which a skewed range can produce on reload.
+        for (const char* id : ids::all)
+            if (! juce::approximatelyEqual (a.processor().state().getRawParameterValue (id)->load(),
+                                            b.processor().state().getRawParameterValue (id)->load()))
+                ++unequal;
+        a.prepare();
+        b.prepare();
+        const Signal x = mix (a.fs);
+        const auto ya = a.render (x), yb = b.render (x);
+        worst = std::max (worst, diffDb (ya, yb, x, 0, x.size()));
+    }
+    r.pass = unequal == 0 && worst < -300.0;
+    r.measured = std::to_string (unequal) + " parameters differ; output difference " + fmtDb (worst) + " over 5 sets";
+    return r;
+}
+
+Result t24AuValidation()
+{
+    Result r { "T24", "auval -v aufx Stph Hgda ends with AU VALIDATION SUCCEEDED", "", false, false, "" };
+    juce::ChildProcess kill;
+    if (kill.start ("killall -9 AudioComponentRegistrar"))
+        kill.waitForProcessToFinish (5000);
+    juce::ChildProcess p;
+    if (! p.start ("auval -v aufx Stph Hgda"))
+    {
+        r.measured = "auval could not be started";
+        return r;
+    }
+    const auto out = p.readAllProcessOutput();
+    p.waitForProcessToFinish (120000);
+    r.pass = out.contains ("AU VALIDATION SUCCEEDED");
+    r.measured = r.pass ? "AU VALIDATION SUCCEEDED" : out.fromLastOccurrenceOf ("\n", false, false).trim().toStdString();
+    if (! r.pass)
+        r.measured = "failed: " + out.getLastCharacters (300).toStdString();
+    return r;
+}
+
+Result t25Performance()
+{
+    Result r { "T25", "60 s of mix at block 512, median of 5: preset 16 <= 4.8 s (8 % of real time); preset 1 <= 0.9 s", "", false, true, "" };
+    const Signal x = tile (mix (48000.0), samples (60.0, 48000.0));
+    double t[2];
+    int i = 0;
+    for (int preset : { 16, 1 })
+    {
+        std::vector<double> runs;
+        for (int run = 0; run < 5; ++run)
+        {
+            Plugin pl;
+            pl.preset (preset);
+            pl.prepare();
+            runs.push_back (timeRender (pl, x));
+        }
+        t[i++] = medianOf (runs);
+    }
+    r.pass = t[0] <= 4.8 && t[1] <= 0.9;
+    r.measured = "preset 16 " + fmt (t[0], 3) + " s (" + fmt (100.0 * t[0] / 60.0, 2) + " % of real time); preset 1 " + fmt (t[1], 3)
+                 + " s (" + fmt (100.0 * t[1] / 60.0, 2) + " %)";
+    return r;
+}
+
+Result t26PresetSanity()
+{
+    Result r { "T26", "Every preset, 5 s of mix: no NaN; peak <= 4 x input peak; presets with mid_blend 0 pass T2 (<= -120 dB)", "", true, false, "" };
+    double worstPeak = 0.0, worstMono = -1e9;
+    int nonFinite = 0, monoSafe = 0;
+    const auto& presets = factoryPresets();
+    for (int p = 1; p <= (int) presets.size(); ++p)
+    {
+        Plugin pl;
+        pl.preset (p);
+        pl.prepare();
+        const Signal x = tile (mix (pl.fs), samples (5.0, pl.fs));
+        const auto y = pl.render (x);
+        if (! allFinite (y.l) || ! allFinite (y.r))
+            ++nonFinite;
+        worstPeak = std::max (worstPeak, std::max (peak (y.l), peak (y.r)) / peak (x));
+        if (pl.get (ids::mid_blend) == 0.0f)
+        {
+            ++monoSafe;
+            const size_t lat = (size_t) pl.latency();
+            double e = 0.0, ref = 0.0;
+            for (size_t i = lat; i < x.size(); ++i)
+            {
+                const double d = 0.5 * ((double) y.l[i] + y.r[i]) - x[i - lat];
+                e += d * d;
+                ref += (double) x[i] * x[i];
+            }
+            worstMono = std::max (worstMono, 10.0 * std::log10 (std::max (e, 1e-300) / ref));
+        }
+    }
+    r.pass = nonFinite == 0 && worstPeak <= 4.0 && worstMono <= -120.0;
+    r.measured = std::to_string (presets.size()) + " presets, " + std::to_string (nonFinite) + " non-finite; worst peak ratio "
+                 + fmt (worstPeak, 2) + "; " + std::to_string (monoSafe) + " mono-safe presets, worst " + fmtDb (worstMono);
+    return r;
+}
+
 Result t27Bypass()
 {
     Result r { "T27", "Bypass on, stereo noise: output - input delayed by Lat <= -120 dB, both engines", "", true, false, "" };
