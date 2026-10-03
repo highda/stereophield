@@ -13,22 +13,22 @@ using Int = juce::AudioParameterInt;
 using Bool = juce::AudioParameterBool;
 using Attr = juce::AudioParameterFloatAttributes;
 
-juce::ParameterID pid (const char* id) { return { id, 1 }; }
+juce::ParameterID pid (const char* id, int version = 1) { return { id, version }; }
 
 juce::String withDecimals (float v, int decimals) { return juce::String (v, decimals); }
 
-std::unique_ptr<Float> percent (const char* id, const char* name, float maxPercent, float def)
+std::unique_ptr<Float> percent (const char* id, const char* name, float maxPercent, float def, int v = 1)
 {
-    return std::make_unique<Float> (pid (id), name, juce::NormalisableRange<float> (0.0f, maxPercent), def,
+    return std::make_unique<Float> (pid (id, v), name, juce::NormalisableRange<float> (0.0f, maxPercent), def,
                                     Attr().withLabel ("%").withStringFromValueFunction ([] (float v, int) { return withDecimals (v, 0) + " %"; }));
 }
 
 // Frequency ranges are skewed so that the geometric mean sits at the centre.
-std::unique_ptr<Float> hertz (const char* id, const char* name, float lo, float hi, float def)
+std::unique_ptr<Float> hertz (const char* id, const char* name, float lo, float hi, float def, int v = 1)
 {
     juce::NormalisableRange<float> r (lo, hi);
     r.setSkewForCentre (std::sqrt (lo * hi));
-    return std::make_unique<Float> (pid (id), name, r, def,
+    return std::make_unique<Float> (pid (id, v), name, r, def,
                                     Attr().withLabel ("Hz").withStringFromValueFunction ([] (float v, int)
                                     {
                                         return v >= 1000.0f ? withDecimals (v / 1000.0f, 2) + " kHz"
@@ -36,10 +36,11 @@ std::unique_ptr<Float> hertz (const char* id, const char* name, float lo, float 
                                     }));
 }
 
-std::unique_ptr<Float> plain (const char* id, const char* name, float lo, float hi, float def, const char* unit, int decimals)
+std::unique_ptr<Float> plain (const char* id, const char* name, float lo, float hi, float def, const char* unit, int decimals,
+                              int v = 1)
 {
     const juce::String u (unit);
-    return std::make_unique<Float> (pid (id), name, juce::NormalisableRange<float> (lo, hi), def,
+    return std::make_unique<Float> (pid (id, v), name, juce::NormalisableRange<float> (lo, hi), def,
                                     Attr().withLabel (u).withStringFromValueFunction ([u, decimals] (float v, int)
                                     {
                                         return withDecimals (v, decimals) + (u.isEmpty() ? "" : " " + u);
@@ -47,9 +48,9 @@ std::unique_ptr<Float> plain (const char* id, const char* name, float lo, float 
 }
 
 std::unique_ptr<Choice> choice (const char* id, const char* name, juce::StringArray items, int def,
-                                bool automatable = true)
+                                bool automatable = true, int v = 1)
 {
-    return std::make_unique<Choice> (pid (id), name, items, def,
+    return std::make_unique<Choice> (pid (id, v), name, items, def,
                                      juce::AudioParameterChoiceAttributes().withAutomatable (automatable));
 }
 
@@ -116,7 +117,70 @@ Layout createParameterLayout()
     l.add (plain (ids::pan_density, "Pan density", 0.25f, 4.0f, 1.0f, "c/oct", 2));
     l.add (hertz (ids::pan_bass_center_hz, "Pan bass centre", 60.0f, 300.0f, 120.0f));
     l.add (std::make_unique<Int> (pid (ids::pan_max_groups), "Pan groups", 2, 8, 6));
+
+    // Part 2, version hint 2.
+    constexpr int v2 = 2;
+    l.add (percent (ids::coh_amount, "Coherence amount", 100.0f, 0.0f, v2));
+    l.add (choice (ids::coh_source, "Coherence source", sources, 0, true, v2));
+    l.add (choice (ids::coh_mode, "Coherence mode", { "Curve", "Spaced pair", "Coincident pair", "Near-coincident" }, 1, true, v2));
+    l.add (plain (ids::coh_p63, "Coherence 63 Hz", -0.5f, 1.0f, 0.9f, "", 2, v2));
+    l.add (plain (ids::coh_p250, "Coherence 250 Hz", -0.5f, 1.0f, 0.6f, "", 2, v2));
+    l.add (plain (ids::coh_p1k, "Coherence 1 kHz", -0.5f, 1.0f, 0.3f, "", 2, v2));
+    l.add (plain (ids::coh_p4k, "Coherence 4 kHz", -0.5f, 1.0f, 0.1f, "", 2, v2));
+    l.add (plain (ids::coh_p16k, "Coherence 16 kHz", -0.5f, 1.0f, 0.0f, "", 2, v2));
+    {
+        juce::NormalisableRange<float> r (2.0f, 200.0f);
+        r.setSkewForCentre (20.0f);
+        l.add (std::make_unique<Float> (pid (ids::coh_spacing_cm, v2), "Mic spacing", r, 40.0f,
+                                        Attr().withLabel ("cm").withStringFromValueFunction ([] (float v, int) { return withDecimals (v, 0) + " cm"; })));
+    }
+    l.add (plain (ids::coh_angle_deg, "Mic angle", 0.0f, 180.0f, 110.0f, "deg", 0, v2));
+    l.add (choice (ids::coh_pattern, "Mic pattern", { "Omni", "Subcardioid", "Cardioid", "Supercardioid", "Figure-8" }, 2, true, v2));
+    l.add (percent (ids::coh_transient, "Coherence transient protection", 100.0f, 70.0f, v2));
+
+    l.add (percent (ids::dbl_amount, "Double amount", 100.0f, 0.0f, v2));
+    l.add (choice (ids::dbl_source, "Double source", sources, 0, true, v2));
+    l.add (plain (ids::dbl_offset_ms, "Double offset", 5.0f, 40.0f, 18.0f, "ms", 1, v2));
+    l.add (plain (ids::dbl_drift_ms, "Double drift", 0.0f, 10.0f, 3.0f, "ms", 1, v2));
+    l.add (hertz (ids::dbl_drift_rate, "Double drift rate", 0.05f, 2.0f, 0.3f, v2));
+    l.add (plain (ids::dbl_pitch_cents, "Double pitch drift", 0.0f, 20.0f, 4.0f, "ct", 1, v2));
+    l.add (plain (ids::dbl_level_db, "Double level drift", 0.0f, 3.0f, 0.7f, "dB", 1, v2));
+    l.add (plain (ids::dbl_tone_db, "Double tone", -6.0f, 6.0f, -1.5f, "dB", 1, v2));
+    l.add (std::make_unique<Int> (pid (ids::dbl_seed, v2), "Double seed", 0, 15, 0));
+
+    l.add (percent (ids::room_amount, "Room amount", 100.0f, 0.0f, v2));
+    l.add (choice (ids::room_source, "Room source", sources, 0, true, v2));
+    {
+        juce::NormalisableRange<float> r (2.0f, 30.0f);
+        r.setSkewForCentre (std::sqrt (60.0f));
+        l.add (std::make_unique<Float> (pid (ids::room_size, v2), "Room size", r, 8.0f,
+                                        Attr().withLabel ("m").withStringFromValueFunction ([] (float v, int) { return withDecimals (v, 1) + " m"; })));
+    }
+    l.add (plain (ids::room_distance, "Room distance", 0.5f, 8.0f, 2.0f, "m", 1, v2));
+    l.add (percent (ids::room_absorb, "Room absorption", 100.0f, 40.0f, v2));
+    l.add (choice (ids::room_order, "Room order", { "1", "2" }, 1, true, v2));
+    l.add (hertz (ids::room_damp_hz, "Room damping", 2000.0f, 20000.0f, 9000.0f, v2));
+
+    l.add (percent (ids::img_amount, "Image expansion", 300.0f, 100.0f, v2));
+    l.add (percent (ids::img_diffuse, "Image diffuse", 200.0f, 100.0f, v2));
+    l.add (hertz (ids::img_center_hz, "Image centre", 20.0f, 500.0f, 120.0f, v2));
+
+    l.add (choice (ids::velvet_design, "Velvet design", { "Random", "Optimised" }, 1, true, v2));
+    l.add (choice (ids::latency_mode, "Latency mode", { "Per engine", "Always Full" }, 0, false, v2));
+    l.add (choice (ids::transient_mode, "Transient detector", { "Envelope", "Spectral flux" }, 1, true, v2));
+    l.add (choice (ids::pan_ownership, "Pan bin ownership", { "Hard", "Soft" }, 1, true, v2));
     return l;
+}
+
+bool legacyValue (const juce::String& id, float& plainValue)
+{
+    // 1.0.0 behaviour for the algorithm choices added in 2.0.
+    if (id == ids::velvet_design || id == ids::latency_mode || id == ids::transient_mode || id == ids::pan_ownership)
+    {
+        plainValue = 0.0f;
+        return true;
+    }
+    return false;
 }
 
 ParamReader::ParamReader (juce::AudioProcessorValueTreeState& state)
@@ -191,6 +255,43 @@ Params ParamReader::read() const noexcept
     p.panDensity = next();
     p.panBassCenterHz = next();
     p.panMaxGroups = idx();
+
+    p.cohAmount = pct();
+    p.cohSource = (Source) idx();
+    p.cohMode = (CohMode) idx();
+    for (auto& c : p.cohPoints)
+        c = next();
+    p.cohSpacingCm = next();
+    p.cohAngleDeg = next();
+    p.cohPattern = (MicPattern) idx();
+    p.cohTransient = pct();
+
+    p.dblAmount = pct();
+    p.dblSource = (Source) idx();
+    p.dblOffsetMs = next();
+    p.dblDriftMs = next();
+    p.dblDriftRate = next();
+    p.dblPitchCents = next();
+    p.dblLevelDb = next();
+    p.dblToneDb = next();
+    p.dblSeed = idx();
+
+    p.roomAmount = pct();
+    p.roomSource = (Source) idx();
+    p.roomSize = next();
+    p.roomDistance = next();
+    p.roomAbsorb = pct();
+    p.roomOrder = idx() + 1;
+    p.roomDampHz = next();
+
+    p.imgAmount = pct();
+    p.imgDiffuse = pct();
+    p.imgCenterHz = next();
+
+    p.velvetDesign = (VelvetDesign) idx();
+    p.latencyMode = (LatencyMode) idx();
+    p.transientMode = (TransientMode) idx();
+    p.panOwnership = (PanOwnership) idx();
     jassert (i == numParameters);
     return p;
 }

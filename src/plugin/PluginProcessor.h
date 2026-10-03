@@ -57,6 +57,7 @@ public:
 
 private:
     void handleAsyncUpdate() override;
+    void completeState (juce::ValueTree& state, int version);
 
     juce::AudioProcessorValueTreeState apvts;
     ParamReader reader;

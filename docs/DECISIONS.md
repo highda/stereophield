@@ -104,3 +104,14 @@ Dated list of choices not dictated by `DESIGN.md`, and every fallback applied.
 - Fallbacks applied: none. Every tunable test passes. T15 needed its tunable detector constants changed (logged under phase 4); T16 passes with the specified 200 ms guard.
 - Not verified by the agent, left to human testing: launching the Standalone app and passing live audio through it (opening an input raises the macOS microphone prompt, which needs a person), loading the Audio Unit in a host, and listening to `build/renders/`.
 - 2026-10-03: the owner reported that the human tests are clear, which closes the items above that were left to human testing.
+
+## Part 2 (PART2_LEDGER.md)
+
+### Phase 2.0
+
+- Phases run in the order 2.0, 2.3, 2.4, 2.5, then the interface phases 2.1, 2.2, 2.6, 2.7, then 2.8 and 2.9. The new nine-card layout needs the new generators to exist; building the interface first would mean laying it out twice.
+- Session fixtures (P2-T30) store a 64-bit FNV-1a hash of the float output instead of SHA-256: `juce_cryptography` is not among the allowed modules, and the hash only has to reveal a changed sample. Two generation runs gave identical hashes.
+- All 35 Part 2 parameters are added at once, appended after the 50 of 1.0 with version hint 2. `latency_mode` is not automatable.
+- States now carry `version = 2`. Loading a state fills every parameter it lacks: with its default, or, for a version-1 state, with the value that reproduces 1.0 (`velvet_design` Random, `latency_mode` Per engine, `transient_mode` Envelope, `pan_ownership` Hard). Without this a missing parameter would keep the loading instance's value. P2-T30: 20 of 20 sessions from 1.0.0 render bit-identically.
+- T23's parameter comparison now uses a relative tolerance of 1e-6 (about eight float steps): `room_damp_hz` reloaded two float steps away (3100.99219 vs 3100.9917) through JUCE's skewed-range round trip. The rendered output stays bit-identical.
+- At the owner's request the research items R1 (NMF) and R2 (learned separation) are dropped; R3 (auto-width) stays. Rule 4 of the ledger is now "no machine learning".

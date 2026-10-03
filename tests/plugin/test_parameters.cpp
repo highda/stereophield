@@ -38,23 +38,30 @@ const Spec table[] = {
 bool near (float a, float b) { return std::abs (a - b) <= 1e-4f * std::max (1.0f, std::abs (b)); }
 } // namespace
 
-TEST_CASE ("All 50 parameters match section 8", "[parameters]")
+TEST_CASE ("The 50 parameters of 1.0 match DESIGN.md section 8", "[parameters]")
 {
     test::Plugin pl;
     auto& state = pl.processor().state();
-    REQUIRE (pl.processor().getParameters().size() == 50);
-    REQUIRE (std::size (table) == 50);
+    REQUIRE (pl.processor().getParameters().size() == numParameters);
+    REQUIRE (std::size (table) == numParametersV1);
+    // The 50 parameters of 1.0 come first, unchanged, with version hint 1;
+    // everything after them has version hint 2.
+    for (int i = 0; i < numParameters; ++i)
+    {
+        INFO (ids::all[i]);
+        CHECK (pl.processor().state().getParameter (ids::all[i])->getVersionHint() == (i < numParametersV1 ? 1 : 2));
+    }
     for (const auto& s : table)
     {
         INFO (s.id);
         auto* p = state.getParameter (s.id);
         REQUIRE (p != nullptr);
-        CHECK (p->getVersionHint() == 1);
         CHECK (near (p->convertFrom0to1 (0.0f), s.lo));
         CHECK (near (p->convertFrom0to1 (1.0f), s.hi));
         CHECK (near (p->convertFrom0to1 (p->getDefaultValue()), s.def));
         CHECK (p->isAutomatable() == (juce::String (s.id) != "engine"));
     }
+    CHECK_FALSE (state.getParameter (ids::latency_mode)->isAutomatable());
 }
 
 TEST_CASE ("Frequency parameters put the geometric mean at the centre", "[parameters]")

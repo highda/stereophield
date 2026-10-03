@@ -342,7 +342,7 @@ void PluginEditor::timerCallback()
 
     auto& core = proc.core();
     Panel* cards[] = { &spreadCard, &delayCard, &modCard, &velvetCard, &panCard };
-    for (int g = 0; g < numGenerators; ++g)
+    for (int g = 0; g < (int) std::size (cards); ++g)
         cards[g]->setAwake (core.sleepController ((GeneratorId) g).awakeFlag.load (std::memory_order_relaxed));
 
     const double now = juce::Time::getMillisecondCounterHiRes();

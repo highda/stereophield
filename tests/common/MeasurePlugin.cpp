@@ -735,13 +735,16 @@ Result t23StateRoundTrip()
         juce::MemoryBlock state;
         a.processor().getStateInformation (state);
         b.processor().setStateInformation (state.getData(), (int) state.getSize());
-        // Compared as the plain values the DSP reads, with JUCE's own
-        // equality: its state adapter ignores changes within about one float
-        // step, which a skewed range can produce on reload.
+        // Compared as the plain values the DSP reads, to a relative 1e-6
+        // (about eight float steps): reloading through a skewed range can
+        // land a few steps away, and JUCE's state adapter ignores such changes.
         for (const char* id : ids::all)
-            if (! juce::approximatelyEqual (a.processor().state().getRawParameterValue (id)->load(),
-                                            b.processor().state().getRawParameterValue (id)->load()))
+        {
+            const float x = a.processor().state().getRawParameterValue (id)->load();
+            const float y = b.processor().state().getRawParameterValue (id)->load();
+            if (std::abs (x - y) > 1.0e-6f * std::max (1.0f, std::abs (x)))
                 ++unequal;
+        }
         a.prepare();
         b.prepare();
         const Signal x = mix (a.fs);

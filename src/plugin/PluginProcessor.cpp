@@ -86,6 +86,7 @@ void StereophieldProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     auto state = apvts.copyState();
     state.setProperty ("program", currentProgram, nullptr);
+    state.setProperty ("version", 2, nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, dest);
@@ -98,9 +99,30 @@ void StereophieldProcessor::setStateInformation (const void* data, int size)
         {
             auto state = juce::ValueTree::fromXml (*xml);
             currentProgram = (int) state.getProperty ("program", 0);
+            completeState (state, (int) state.getProperty ("version", 1));
             apvts.replaceState (state);
             dsp.requestSnap();
         }
+}
+
+void StereophieldProcessor::completeState (juce::ValueTree& state, int version)
+{
+    // A parameter missing from the saved state takes its default, or, for a
+    // state saved by an older version, the value that reproduces that
+    // version's sound. Without this it would keep this instance's value.
+    for (const char* id : ids::all)
+    {
+        if (state.getChildWithProperty ("id", juce::String (id)).isValid())
+            continue;
+        auto* p = apvts.getParameter (id);
+        float value = p->convertFrom0to1 (p->getDefaultValue());
+        if (version < 2)
+            legacyValue (id, value);
+        juce::ValueTree child ("PARAM");
+        child.setProperty ("id", juce::String (id), nullptr);
+        child.setProperty ("value", value, nullptr);
+        state.appendChild (child, nullptr);
+    }
 }
 
 juce::AudioProcessorParameter* StereophieldProcessor::getBypassParameter() const
