@@ -58,9 +58,10 @@ void forceMonoSafe (Plugin& pl)
 
 void randomise (Plugin& pl, uint32_t seed)
 {
+    // The engine's parameters; the interface stays Complete.
     Rng rng (seed);
-    for (const char* id : ids::all)
-        pl.setNormalised (id, (float) rng.uniform());
+    for (int i = 0; i < numCoreParameters; ++i)
+        pl.setNormalised (ids::all[i], (float) rng.uniform());
 }
 
 void spreadOnly (Plugin& pl, int spreadType)

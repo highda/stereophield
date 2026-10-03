@@ -74,8 +74,9 @@ const std::vector<Preset>& factoryPresets()
 
 void applyPreset (juce::AudioProcessorValueTreeState& state, const Preset& preset)
 {
-    for (const char* id : ids::all)
-        if (auto* p = state.getParameter (id))
+    // The core parameters only: the mode and the Easy macros stay.
+    for (int i = 0; i < numCoreParameters; ++i)
+        if (auto* p = state.getParameter (ids::all[i]))
             p->setValueNotifyingHost (p->getDefaultValue());
     for (const auto& [id, value] : preset.changes)
         if (auto* p = state.getParameter (id))

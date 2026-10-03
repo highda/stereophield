@@ -26,7 +26,8 @@ namespace ids
     X (dbl_level_db) X (dbl_tone_db) X (dbl_seed) \
     X (room_amount) X (room_source) X (room_size) X (room_distance) X (room_absorb) X (room_order) X (room_damp_hz) \
     X (img_amount) X (img_diffuse) X (img_center_hz) \
-    X (velvet_design) X (latency_mode) X (transient_mode) X (pan_ownership) X (width_mode) X (asw_target)
+    X (velvet_design) X (latency_mode) X (transient_mode) X (pan_ownership) X (width_mode) X (asw_target) X (guard_ceiling_db) \
+    X (ui_mode) X (easy_width) X (easy_character) X (easy_space) X (easy_focus) X (easy_adapt) X (easy_low_latency)
 
 #define SPH_DECLARE_ID(name) inline constexpr const char* name = #name;
 SPH_PARAM_IDS (SPH_DECLARE_ID)
@@ -42,6 +43,27 @@ inline constexpr const char* all[] = {
 inline constexpr int numParameters = (int) (sizeof (ids::all) / sizeof (ids::all[0]));
 
 inline constexpr int numParametersV1 = 50;
+
+// Parameters the engine reads (Params); after them come the Easy mode
+// parameters of PART3_LEDGER.md section 7, which only the mapping reads.
+inline constexpr int numCoreParameters = 88;
+inline constexpr int numParametersV2 = 87;
+
+// Position of a parameter in ids::all, at compile time.
+constexpr int indexOf (const char* id)
+{
+    for (int i = 0; i < numParameters; ++i)
+    {
+        const char* a = ids::all[i];
+        int k = 0;
+        while (a[k] != 0 && a[k] == id[k])
+            ++k;
+        if (a[k] == id[k])
+            return i;
+    }
+    return -1;
+}
+static_assert (indexOf (ids::ui_mode) == numCoreParameters);
 
 // A float parameter that keeps its exact plain value. JUCE's float
 // parameter stores convertFrom0to1 (normalised), so some plain values (0 dB on
@@ -73,9 +95,10 @@ private:
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-// Value a parameter takes when a session saved before it existed is loaded:
-// the behaviour of that older version. Returns false if the default applies.
-bool legacyValue (const juce::String& id, float& plainValue);
+// Value a parameter takes when a session saved by an older version (state
+// version 1 or 2), before the parameter existed, is loaded: the behaviour of
+// that version. Returns false if the default applies.
+bool legacyValue (const juce::String& id, int version, float& plainValue);
 
 // Parameter values, looked up once; read() converts them to Params.
 //
@@ -88,6 +111,12 @@ class ParamReader
 public:
     explicit ParamReader (juce::AudioProcessorValueTreeState& state);
     Params read (bool legacy = false) const noexcept;
+
+    // Every parameter's plain value, in ids::all order.
+    void values (float* out, bool legacy = false) const noexcept;
+
+    // Params from plain values in ids::all order (the core parameters).
+    static Params toParams (const float* values) noexcept;
 
 private:
     float value (int i, bool legacy) const noexcept;

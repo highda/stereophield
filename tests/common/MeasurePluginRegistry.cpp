@@ -59,6 +59,18 @@ const std::vector<Entry>& registry()
         { "P2-T36", p2t36PerceptualMetrics },
         { "P2-T37", p2t37WholeBudget },
         { "R3", r3AutoWidth },
+        { "P3-T1", p3t1EasyMonoSafe },
+        { "P3-T2", p3t2LinearWidth },
+        { "P3-T3", p3t3Correlation },
+        { "P3-T4", p3t4Loudness },
+        { "P3-T5", p3t5BassTransients },
+        { "P3-T6", p3t6ExpandInaudible },
+        { "P3-T7", p3t7CollapseConfirmation },
+        { "P3-T8", p3t8MacroAutomation },
+        { "P3-T9", p3t9Classifier },
+        { "P3-T10", p3t10EasyCost },
+        { "P3-T11", p3t11EasySnapshots },
+        { "P3-T12", p3t12SessionCompatibility },
     };
     return entries;
 }

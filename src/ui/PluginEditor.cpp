@@ -46,6 +46,39 @@ juce::String U (const char* utf8) { return juce::String::fromUTF8 (utf8); }
 bool cz() { return language() == Language::Czech; }
 } // namespace
 
+PluginEditor::Confirm::Confirm()
+{
+    title.setFont (titleFont());
+    title.setColour (juce::Label::textColourId, colours::text);
+    body.setFont (bodyFont());
+    body.setColour (juce::Label::textColourId, colours::secondary);
+    body.setJustificationType (juce::Justification::topLeft);
+    for (auto* c : std::initializer_list<juce::Component*> { &title, &body, &ok, &cancel })
+        addAndMakeVisible (*c);
+}
+
+void PluginEditor::Confirm::paint (juce::Graphics& g)
+{
+    g.fillAll (colours::background.withAlpha (0.7f));
+    auto box = getLocalBounds().withSizeKeepingCentre (420, 132).toFloat();
+    g.setColour (colours::panel);
+    g.fillRoundedRectangle (box, cornerRadius);
+    g.setColour (colours::accent.withAlpha (0.8f));
+    g.drawRoundedRectangle (box.reduced (0.75f), cornerRadius, 1.5f);
+}
+
+void PluginEditor::Confirm::resized()
+{
+    auto box = getLocalBounds().withSizeKeepingCentre (420, 132).reduced (16, 14);
+    title.setBounds (box.removeFromTop (22));
+    auto buttons = box.removeFromBottom (28);
+    cancel.setBounds (buttons.removeFromRight (110));
+    buttons.removeFromRight (8);
+    ok.setBounds (buttons.removeFromRight (150));
+    box.removeFromBottom (8);
+    body.setBounds (box);
+}
+
 PluginEditor::PluginEditor (StereophieldProcessor& p) : AudioProcessorEditor (p), proc (p)
 {
     setLookAndFeel (&lnf);
@@ -110,6 +143,15 @@ PluginEditor::PluginEditor (StereophieldProcessor& p) : AudioProcessorEditor (p)
     root.addAndMakeVisible (*languageSwitch);
     bypass = std::make_unique<Toggle> (s, ids::bypass, "ui.bypass");
     root.addAndMakeVisible (*bypass);
+    modeButton.onClick = [this]
+    {
+        if (proc.isEasyMode())
+            proc.expandToComplete();
+        else
+            askCollapse();
+        applyMode();
+    };
+    root.addAndMakeVisible (modeButton);
 
     // ----------------------------------------------------------- cards
     for (int c = 0; c < numCards; ++c)
@@ -216,6 +258,14 @@ PluginEditor::PluginEditor (StereophieldProcessor& p) : AudioProcessorEditor (p)
     guardLabel.setColour (juce::Label::textColourId, colours::secondary);
     setHelpKey (guardLabel, "p.guard");
     sidePanel.addAndMakeVisible (guardLabel);
+    guardCeiling.setSliderStyle (juce::Slider::LinearBar);
+    guardCeiling.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 50, 18);
+    guardCeiling.setColour (juce::Slider::trackColourId, colours::accent.withAlpha (0.5f));
+    guardCeilingAttachment = std::make_unique<APVTSAttachment> (s, ids::guard_ceiling_db, guardCeiling);
+    guardCeiling.textFromValueFunction = [] (double v) { return localNumber (juce::String (v, 1)) + " dB"; };
+    guardCeiling.updateText();
+    setHelpKey (guardCeiling, "p.guard_ceiling_db");
+    sidePanel.addAndMakeVisible (guardCeiling);
     bottom (outputPanel, ids::width, true);
     bottom (outputPanel, ids::mid_blend);
     bottom (outputPanel, ids::out_gain_db);
@@ -242,6 +292,12 @@ PluginEditor::PluginEditor (StereophieldProcessor& p) : AudioProcessorEditor (p)
     root.addAndMakeVisible (info);
     info.onApply = [this] (const TourStep& st)
     {
+        // Tours demonstrate the complete interface's controls.
+        if (proc.isEasyMode())
+        {
+            proc.expandToComplete();
+            applyMode();
+        }
         proc.commitUndoPoint();
         for (const auto& [id, v] : st.apply)
             if (auto* prm = proc.state().getParameter (id))
@@ -249,6 +305,19 @@ PluginEditor::PluginEditor (StereophieldProcessor& p) : AudioProcessorEditor (p)
         proc.commitUndoPoint();
     };
     info.onTourChanged = [this] { overlay.repaint(); };
+
+    // ------------------------------------------------------------ easy
+    easy = std::make_unique<EasyView> (proc, analysis);
+    root.addChildComponent (*easy);
+    confirm.ok.onClick = [this]
+    {
+        confirm.setVisible (false);
+        proc.collapseToEasy (true);
+        applyMode();
+    };
+    confirm.cancel.onClick = [this] { confirm.setVisible (false); };
+    root.addChildComponent (confirm);
+
     overlay.setInterceptsMouseClicks (false, false);
     root.addAndMakeVisible (overlay);
 
@@ -268,7 +337,9 @@ PluginEditor::PluginEditor (StereophieldProcessor& p) : AudioProcessorEditor (p)
     for (auto& list : details)
         for (auto& comp : list)
             comp->toFront (false);
+    easy->toFront (false);
     overlay.toFront (false);
+    confirm.toFront (false);
 
     gonioBuffer.assign ((size_t) (2 * Meters::fifoPairs), 0.0f);
     for (int t = 0; t < ScopeTaps::numTaps; ++t)
@@ -281,6 +352,7 @@ PluginEditor::PluginEditor (StereophieldProcessor& p) : AudioProcessorEditor (p)
     tooltipsWithInfo = savedSetting ("tooltipsWithInfo", 0.0) > 0.5;
     setResizable (false, false);
     sendLookAndFeelChange();
+    applyMode();
     applyLanguage();
     selectGenerator (0);
     selectTab (tabDetails);
@@ -331,6 +403,16 @@ void PluginEditor::applyLanguage()
     undoButton.setButtonText (tr ("ui.undo"));
     redoButton.setButtonText (tr ("ui.redo"));
     copyAB.setButtonText (tr ("ui.copyab"));
+    modeButton.setButtonText (tr (proc.isEasyMode() ? "ui.expand" : "ui.collapse"));
+    modeButton.setTitle (modeButton.getButtonText());
+    setHelpKey (modeButton, proc.isEasyMode() ? "ui.expand" : "ui.collapse");
+    modeButton.setTooltip (shortHelp (helpKeyOf (modeButton)));
+    confirm.title.setText (tr ("ui.collapsetitle"), juce::dontSendNotification);
+    confirm.body.setText (tr ("ui.collapsebody"), juce::dontSendNotification);
+    confirm.ok.setButtonText (tr ("ui.collapseok"));
+    confirm.cancel.setButtonText (tr ("ui.cancel"));
+    guardCeiling.setTitle (tr ("cap.guard_ceiling_db"));
+    guardCeiling.updateText();
     infoButton.setButtonText (tr ("ui.info"));
     learnButton.setButtonText (tr ("ui.learn"));
     correlationLabel.setText (tr ("ui.correlation"), juce::dontSendNotification);
@@ -414,6 +496,38 @@ void PluginEditor::savePresetDialog()
     }), true);
 }
 
+void PluginEditor::askCollapse()
+{
+    confirm.setBounds (root.getLocalBounds());
+    confirm.setVisible (true);
+    confirm.toFront (true);
+    confirm.cancel.grabKeyboardFocus();
+}
+
+void PluginEditor::applyMode()
+{
+    easyMode = proc.isEasyMode();
+    // The complete interface stays built underneath; Easy covers it.
+    for (auto* c : std::initializer_list<juce::Component*> { &presetMenu, &prevPreset, &nextPreset, engine.get(), &meterPanel, &centre,
+                                                             &analysisPanel, &sidePanel, &outputPanel })
+        c->setVisible (! easyMode);
+    engineLabel.setVisible (! easyMode && infoOpen);
+    for (auto& card : cards)
+        card->setVisible (! easyMode);
+    for (auto& t : tabs)
+        t.setVisible (! easyMode);
+    easy->setVisible (easyMode);
+    if (easyMode)
+        for (auto& list : details)
+            for (auto& comp : list)
+                comp->setVisible (false);
+    modeButton.setButtonText (tr (easyMode ? "ui.expand" : "ui.collapse"));
+    modeButton.setTitle (modeButton.getButtonText());
+    setHelpKey (modeButton, easyMode ? "ui.expand" : "ui.collapse");
+    modeButton.setTooltip (shortHelp (helpKeyOf (modeButton)));
+    layoutKey = -1;
+}
+
 void PluginEditor::setZoom (float z)
 {
     zoom = juce::jlimit (0.75f, 1.5f, z);
@@ -480,7 +594,7 @@ void PluginEditor::updateVisibility()
     auto show = [this] (const char* id, bool v) { if (auto* c = byId[id]) c->setVisible (v); };
     for (int c = 0; c < numCards; ++c)
         for (auto& comp : details[(size_t) c])
-            comp->setVisible (tab == tabDetails && c == selectedCard);
+            comp->setVisible (! easyMode && tab == tabDetails && c == selectedCard);
     if (tab == tabDetails)
     {
         const int sel = selectedCard;
@@ -525,7 +639,7 @@ void PluginEditor::updateVisibility()
     // The analysis settings apply to the Full engine; the latency mode to both.
     for (const char* id : { ids::ambience, ids::room_decay_s, ids::transient_mode })
         dim (*byId[id], full);
-    cards[8]->setVisible (stereoInput());
+    cards[8]->setVisible (stereoInput() && ! easyMode);
     // In Details, the right part shows the selected generator's own view.
     const bool detailCoh = tab == tabDetails && selectedCard == 5;
     const bool detailPan = tab == tabDetails && selectedCard == 4;
@@ -539,6 +653,8 @@ void PluginEditor::updateVisibility()
         centre.addAndMakeVisible (*detailScope);
     }
     detailScope->setVisible (tab == tabDetails && ! detailCoh && ! detailPan);
+    if (easyMode)
+        return;
     flow->setVisible (tab == tabFlow);
     scopes->setVisible (tab == tabScopes);
     bands->setVisible (tab == tabBands);
@@ -556,6 +672,8 @@ void PluginEditor::layout()
     {
         auto h = juce::Rectangle<int> (0, 0, W, 48).reduced (10, 10);
         h.removeFromLeft (118); // title
+        modeButton.setBounds (h.removeFromLeft (96));
+        h.removeFromLeft (8);
         bypass->setBounds (h.removeFromRight (64));
         h.removeFromRight (4);
         settingsButton.setBounds (h.removeFromRight (28));
@@ -578,7 +696,7 @@ void PluginEditor::layout()
         latencyLabel.setBounds (h.removeFromRight (narrow ? 70 : 120));
         engine->setBounds (h.removeFromRight (104));
         engineLabel.setBounds (h.removeFromRight (narrow ? 0 : 44));
-        engineLabel.setVisible (! narrow);
+        engineLabel.setVisible (! narrow && ! easyMode);
         h.removeFromRight (8);
         nextPreset.setBounds (h.removeFromRight (22));
         prevPreset.setBounds (h.removeFromRight (22));
@@ -697,8 +815,10 @@ void PluginEditor::layout()
             const int w = sb.getWidth() / 7;
             for (const char* id : { ids::bass_mono_hz, ids::band_xover_lo, ids::band_xover_hi, ids::band_low, ids::band_mid, ids::band_high, ids::transient_duck })
                 byId[id]->setBounds (sb.removeFromLeft (w));
-            guardLabel.setBounds (g.removeFromTop (34).withTrimmedTop (6));
-            byId[ids::guard]->setBounds (g.removeFromTop (26).reduced (4, 0));
+            guardLabel.setBounds (g.removeFromTop (30).withTrimmedTop (4));
+            byId[ids::guard]->setBounds (g.removeFromTop (24).reduced (4, 0));
+            g.removeFromTop (6);
+            guardCeiling.setBounds (g.removeFromTop (20).reduced (2, 0));
         }
         {
             auto o = outputPanel.content();
@@ -718,7 +838,9 @@ void PluginEditor::layout()
 
     info.setBounds (compactWidth, top, fullWidth - compactWidth - gap, height - top - gap);
     info.setVisible (infoOpen);
+    easy->setBounds (gap, top, compactWidth - 2 * gap, height - top - gap);
     overlay.setBounds (root.getLocalBounds());
+    confirm.setBounds (root.getLocalBounds());
 }
 
 juce::String PluginEditor::liveText (const juce::String& key) const
@@ -815,10 +937,12 @@ void PluginEditor::timerCallback()
 {
     if (proc.uiLanguage() != appliedLanguage)
         applyLanguage();
+    if (proc.isEasyMode() != easyMode)
+        applyMode();
 
     const int key = (int) param (ids::spread_type) | ((int) param (ids::mod_type) << 1) | ((int) param (ids::pan_mode) << 2)
                     | ((int) param (ids::engine) << 4) | ((int) param (ids::coh_mode) << 5) | (stereoInput() ? 1 << 7 : 0)
-                    | ((int) param (ids::latency_mode) << 8) | (tab << 9) | (selectedCard << 12);
+                    | ((int) param (ids::latency_mode) << 8) | (tab << 9) | (selectedCard << 12) | (easyMode ? 1 << 16 : 0);
     if (key != layoutKey)
     {
         layoutKey = key;
@@ -857,9 +981,14 @@ void PluginEditor::timerCallback()
 
     const double now = juce::Time::getMillisecondCounterHiRes();
     const int n = core.meters.popGoniometer (gonioBuffer.data(), Meters::fifoPairs);
-    goniometer.push (gonioBuffer.data(), n, now);
-    goniometer.prune (now);
-    goniometer.repaint();
+    if (easyMode)
+        easy->refresh (gonioBuffer.data(), n, now);
+    else
+    {
+        goniometer.push (gonioBuffer.data(), n, now);
+        goniometer.prune (now);
+        goniometer.repaint();
+    }
     correlation.setValue (core.meters.correlation());
     levels.setPeaks (core.meters.takePeak (0), core.meters.takePeak (1), now);
     analysis.pull (core.outputRing);
@@ -892,7 +1021,7 @@ void PluginEditor::timerCallback()
                     break;
                 }
         if (hk.isEmpty())
-            hk = "preset." + juce::String (proc.getCurrentProgram() + 1);
+            hk = easyMode ? juce::String ("ui.easy") : "preset." + juce::String (proc.getCurrentProgram() + 1);
     }
     if (hk == "disp.flow" && flow->hoveredHelp().isNotEmpty())
         hk = flow->hoveredHelp();

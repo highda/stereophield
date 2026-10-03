@@ -49,7 +49,7 @@ TEST_CASE ("The 50 parameters of 1.0 match DESIGN.md section 8", "[parameters]")
     for (int i = 0; i < numParameters; ++i)
     {
         INFO (ids::all[i]);
-        CHECK (pl.processor().state().getParameter (ids::all[i])->getVersionHint() == (i < numParametersV1 ? 1 : 2));
+        CHECK (pl.processor().state().getParameter (ids::all[i])->getVersionHint() == (i < numParametersV1 ? 1 : (i < numParametersV2 ? 2 : 3)));
     }
     for (const auto& s : table)
     {

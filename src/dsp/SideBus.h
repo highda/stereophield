@@ -66,6 +66,7 @@ private:
 
     // Step 3 and 4.
     juce::SmoothedValue<float> duck, width, midBlend, guardMix;
+    double guardCeiling = 1.0; // power ratio
     OnePole guardPm, guardPs;
     Follower guardG;
 };

@@ -101,6 +101,11 @@ struct Params
     PanOwnership panOwnership = PanOwnership::Hard;
     WidthMode widthMode = WidthMode::Manual;
     float aswTarget = 0.3f;
+
+    // Part 3 (version hint 3): the guard's side ceiling against the mid, in
+    // dB. 0 dB keeps the correlation at or above 0, as before; Easy mode
+    // uses it to bound the loudness change.
+    float guardCeilingDb = 0.0f;
 };
 
 // Generators, in the order of the signal-flow diagram.

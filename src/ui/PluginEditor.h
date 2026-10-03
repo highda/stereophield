@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/Displays.h"
+#include "ui/EasyView.h"
 #include "ui/InfoPanel.h"
 #include "ui/Style.h"
 #include "ui/Views.h"
@@ -44,6 +45,13 @@ public:
     ui::InfoPanel& infoPanel() noexcept { return info; }
     juce::Component& rootComponent() noexcept { return root; }
     juce::String liveText (const juce::String& helpKey) const;
+    // Easy mode (PART3_LEDGER.md section 6): the header's mode button expands
+    // at once, or asks before collapsing. answerCollapseForTest presses the
+    // confirmation's OK (true) or Cancel (false).
+    void pressModeButtonForTest() { modeButton.onClick(); }
+    bool collapseQuestionShowing() const { return confirm.isVisible(); }
+    void answerCollapseForTest (bool ok) { (ok ? confirm.ok : confirm.cancel).onClick(); }
+    bool easyShowing() const { return easy != nullptr && easy->isVisible(); }
 
     enum Tab { tabDetails = 0, tabPan, tabCoherence, tabFlow, tabScopes, tabBands, numTabs };
 
@@ -52,6 +60,8 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void layout();
     void updateVisibility();
+    void applyMode();
+    void askCollapse();
     void applyLanguage();
     void buildPresetMenu();
     void showSettingsMenu();
@@ -125,6 +135,23 @@ private:
     std::unique_ptr<APVTSAttachment> aswAttachment;
 
     ui::InfoPanel info;
+
+    // Easy mode.
+    std::unique_ptr<ui::EasyView> easy;
+    juce::TextButton modeButton;
+    juce::Slider guardCeiling; // compact bar under the guard toggle
+    std::unique_ptr<APVTSAttachment> guardCeilingAttachment;
+    bool easyMode = false;
+
+    // The question before collapsing to Easy mode: a sheet over the editor.
+    struct Confirm : juce::Component
+    {
+        juce::Label title, body;
+        juce::TextButton ok, cancel;
+        Confirm();
+        void paint (juce::Graphics&) override;
+        void resized() override;
+    } confirm;
 
     // Tour highlight overlay.
     struct Overlay : juce::Component

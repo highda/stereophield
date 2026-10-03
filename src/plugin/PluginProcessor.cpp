@@ -15,6 +15,9 @@ StereophieldProcessor::StereophieldProcessor()
       reader (apvts)
 {
     language = ui::savedLanguagePreference();
+    // Every parameter's exact default, as a fresh instance holds it.
+    defaults = snapshot();
+    weightsOut[easy::mixed].store (1.0f);
 }
 
 StereophieldProcessor::~StereophieldProcessor()
@@ -34,7 +37,17 @@ void StereophieldProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     teachPos = 0;
     if (history.empty())
         commitUndoPoint();
-    dsp.prepare ({ sampleRate, samplesPerBlock }, reader.read (legacyValues.load()));
+    classifier.prepare (sampleRate);
+    monoTmp.assign ((size_t) std::max (1, samplesPerBlock), 0.0f);
+    if (! weightsForced.load())
+    {
+        for (auto& w : weightsOut)
+            w.store (0.0f);
+        weightsOut[easy::mixed].store (1.0f);
+    }
+    Snapshot v;
+    blockValues (v.data());
+    dsp.prepare ({ sampleRate, samplesPerBlock }, ParamReader::toParams (v.data()));
     dsp.latencyChanged.store (false);
     setLatencySamples (dsp.latencySamples());
 }
@@ -55,7 +68,6 @@ void StereophieldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     if (buffer.getNumChannels() < 2 || n == 0)
         return;
 
-    dsp.setParams (reader.read (legacyValues.load (std::memory_order_relaxed)));
     float* l = buffer.getWritePointer (0);
     float* r = buffer.getWritePointer (1);
     if (const auto* t = teachActive.load (std::memory_order_acquire); t != nullptr && ! t->empty())
@@ -70,10 +82,91 @@ void StereophieldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                 teachPos = 0;
         }
     }
+    Snapshot v;
+    reader.values (v.data(), legacyValues.load (std::memory_order_relaxed));
+    if (easy::isEasy (v.data()))
+    {
+        // The classifier hears this block's input and steers the next one.
+        if (easy::readMacros (v.data()).adapt && ! weightsForced.load (std::memory_order_relaxed))
+        {
+            const float* in = l;
+            if (getTotalNumInputChannels() >= 2 && (int) monoTmp.size() >= n)
+            {
+                for (int i = 0; i < n; ++i)
+                    monoTmp[(size_t) i] = 0.5f * (l[i] + r[i]);
+                in = monoTmp.data();
+            }
+            if ((int) monoTmp.size() >= n)
+                classifier.process (in, n);
+            for (int k = 0; k < easy::numClasses; ++k)
+                weightsOut[(size_t) k].store (classifier.weight (k), std::memory_order_relaxed);
+        }
+        easy::apply (v.data(), defaults.data(), materialWeights(), stereoInput(), easyTable());
+    }
+    dsp.setParams (ParamReader::toParams (v.data()));
     dsp.process (l, getTotalNumInputChannels() >= 2 ? r : nullptr, l, r, n);
 
     if (dsp.latencyChanged.exchange (false))
         triggerAsyncUpdate();
+}
+
+void StereophieldProcessor::blockValues (float* v)
+{
+    reader.values (v, legacyValues.load (std::memory_order_relaxed));
+    if (easy::isEasy (v))
+        easy::apply (v, defaults.data(), materialWeights(), stereoInput(), easyTable());
+}
+
+easy::Weights StereophieldProcessor::materialWeights() const noexcept
+{
+    easy::Weights w;
+    for (int k = 0; k < easy::numClasses; ++k)
+        w[(size_t) k] = weightsOut[(size_t) k].load (std::memory_order_relaxed);
+    return w;
+}
+
+void StereophieldProcessor::setEasyOverrides (const easy::Table* table, const easy::Weights* weights)
+{
+    tableOverride.store (table, std::memory_order_release);
+    weightsForced.store (weights != nullptr);
+    if (weights != nullptr)
+        for (int k = 0; k < easy::numClasses; ++k)
+            weightsOut[(size_t) k].store ((*weights)[(size_t) k]);
+}
+
+StereophieldProcessor::Snapshot StereophieldProcessor::effectiveValues() const
+{
+    Snapshot v;
+    reader.values (v.data(), legacyValues.load());
+    if (easy::isEasy (v.data()))
+        easy::apply (v.data(), defaults.data(), materialWeights(), stereoInput(), easyTable());
+    return v;
+}
+
+bool StereophieldProcessor::isEasyMode() const
+{
+    return static_cast<juce::AudioParameterChoice*> (apvts.getParameter (ids::ui_mode))->getIndex() == 0;
+}
+
+void StereophieldProcessor::expandToComplete()
+{
+    if (! isEasyMode())
+        return;
+    commitUndoPoint();
+    auto v = effectiveValues();
+    v[(size_t) indexOf (ids::ui_mode)] = 1.0f;
+    restore (v);
+    commitUndoPoint();
+}
+
+bool StereophieldProcessor::collapseToEasy (bool confirmed)
+{
+    if (isEasyMode() || ! confirmed)
+        return false;
+    commitUndoPoint();
+    setExact (apvts.getParameter (ids::ui_mode), 0.0f);
+    commitUndoPoint();
+    return true;
 }
 
 void StereophieldProcessor::handleAsyncUpdate()
@@ -96,10 +189,16 @@ void StereophieldProcessor::setCurrentProgram (int index)
     const auto& presets = factoryPresets();
     if (index < 0 || index >= (int) presets.size())
         return;
+    // Some hosts recall the current program when they create an instance;
+    // on an untouched instance that is no request to leave Easy mode.
+    if (index == currentProgram && snapshot() == defaults)
+        return;
     commitUndoPoint();
     currentProgram = index;
     legacyValues.store (false);
+    // Factory presets are settings of the complete interface.
     applyPreset (apvts, presets[(size_t) index]);
+    setExact (apvts.getParameter (ids::ui_mode), 1.0f);
     dsp.requestSnap();
     commitUndoPoint();
 }
@@ -280,7 +379,7 @@ void StereophieldProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     auto state = apvts.copyState();
     state.setProperty ("program", currentProgram, nullptr);
-    state.setProperty ("version", 2, nullptr);
+    state.setProperty ("version", 3, nullptr);
     state.setProperty ("language", language, nullptr);
     // The tree mirrors APVTS's copy of each value, which can sit a float step
     // away from the parameter's own; save the exact values.
@@ -337,8 +436,7 @@ void StereophieldProcessor::completeState (juce::ValueTree& state, int version)
             continue;
         auto* p = apvts.getParameter (id);
         float value = p->convertFrom0to1 (p->getDefaultValue());
-        if (version < 2)
-            legacyValue (id, value);
+        legacyValue (id, version, value);
         juce::ValueTree child ("PARAM");
         child.setProperty ("id", juce::String (id), nullptr);
         child.setProperty ("value", value, nullptr);

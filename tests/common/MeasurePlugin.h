@@ -32,6 +32,20 @@ Result r3AutoWidth();
 
 // Part 2.
 Result p2t14PerceivedWidth();
+
+// Part 3: Easy mode.
+Result p3t1EasyMonoSafe();
+Result p3t2LinearWidth();
+Result p3t3Correlation();
+Result p3t4Loudness();
+Result p3t5BassTransients();
+Result p3t6ExpandInaudible();
+Result p3t7CollapseConfirmation();
+Result p3t8MacroAutomation();
+Result p3t9Classifier();
+Result p3t10EasyCost();
+Result p3t11EasySnapshots();
+Result p3t12SessionCompatibility();
 Result p2t36PerceptualMetrics();
 Result p2t15CoherenceTarget();
 Result p2t16PhysicalCurves();

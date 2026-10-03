@@ -15,7 +15,11 @@ using Attr = juce::AudioParameterFloatAttributes;
 
 juce::ParameterID pid (const char* id, int version = 1) { return { id, version }; }
 
-juce::String withDecimals (float v, int decimals) { return juce::String (v, decimals); }
+// juce::String (v, 0) prints every digit; 0 decimals means rounded here.
+juce::String withDecimals (float v, int decimals)
+{
+    return decimals > 0 ? juce::String (v, decimals) : juce::String (juce::roundToInt (v));
+}
 
 std::unique_ptr<Float> percent (const char* id, const char* name, float maxPercent, float def, int v = 1)
 {
@@ -182,6 +186,18 @@ Layout createParameterLayout()
     l.add (choice (ids::width_mode, "Width mode", { "Manual", "Auto" }, 0, true, v2));
     l.add (plain (ids::asw_target, "Auto-width target", 0.0f, 0.55f, 0.3f, "", 2, v2));
 
+    // Part 3, version hint 3: the guard's ceiling, then Easy mode
+    // (PART3_LEDGER.md section 7).
+    constexpr int v3 = 3;
+    l.add (plain (ids::guard_ceiling_db, "Guard ceiling", -12.0f, 0.0f, 0.0f, "dB", 1, v3));
+    l.add (choice (ids::ui_mode, "Mode", { "Easy", "Complete" }, 0, false, v3));
+    l.add (percent (ids::easy_width, "Easy width", 100.0f, 50.0f, v3));
+    l.add (percent (ids::easy_character, "Easy character", 100.0f, 40.0f, v3));
+    l.add (percent (ids::easy_space, "Easy space", 100.0f, 20.0f, v3));
+    l.add (percent (ids::easy_focus, "Easy focus", 100.0f, 50.0f, v3));
+    l.add (choice (ids::easy_adapt, "Easy adapt", { "Off", "On" }, 1, true, v3));
+    l.add (choice (ids::easy_low_latency, "Easy low latency", { "Off", "On" }, 0, false, v3));
+
     static const std::vector<std::pair<const char*, std::vector<const char*>>> groups {
         { "Global", { ids::engine, ids::latency_mode, ids::bypass } },
         { "Analysis", { ids::ambience, ids::room_decay_s, ids::transient_mode } },
@@ -199,8 +215,10 @@ Layout createParameterLayout()
         { "Room", { ids::room_amount, ids::room_source, ids::room_size, ids::room_distance, ids::room_absorb, ids::room_order, ids::room_damp_hz } },
         { "Image", { ids::img_amount, ids::img_diffuse, ids::img_center_hz } },
         { "Side bus", { ids::bass_mono_hz, ids::band_xover_lo, ids::band_xover_hi, ids::band_low, ids::band_mid, ids::band_high,
-                        ids::transient_duck, ids::guard } },
+                        ids::transient_duck, ids::guard, ids::guard_ceiling_db } },
         { "Output", { ids::width, ids::mid_blend, ids::comp_mode, ids::out_gain_db, ids::listen, ids::width_mode, ids::asw_target } },
+        { "Easy", { ids::ui_mode, ids::easy_width, ids::easy_character, ids::easy_space, ids::easy_focus, ids::easy_adapt,
+                    ids::easy_low_latency } },
     };
     Layout layout;
     for (const auto& [name, members] : groups)
@@ -218,12 +236,19 @@ Layout createParameterLayout()
 }
 
 
-bool legacyValue (const juce::String& id, float& plainValue)
+bool legacyValue (const juce::String& id, int version, float& plainValue)
 {
     // 1.0.0 behaviour for the algorithm choices added in 2.0.
-    if (id == ids::velvet_design || id == ids::latency_mode || id == ids::transient_mode || id == ids::pan_ownership)
+    if (version < 2
+        && (id == ids::velvet_design || id == ids::latency_mode || id == ids::transient_mode || id == ids::pan_ownership))
     {
         plainValue = 0.0f;
+        return true;
+    }
+    // Sessions from before Easy mode open in the complete interface.
+    if (version < 3 && id == ids::ui_mode)
+    {
+        plainValue = 1.0f;
         return true;
     }
     return false;
@@ -258,10 +283,23 @@ float ParamReader::value (int i, bool legacy) const noexcept
     return raw[i]->load (std::memory_order_relaxed);
 }
 
+void ParamReader::values (float* out, bool legacy) const noexcept
+{
+    for (int i = 0; i < numParameters; ++i)
+        out[i] = value (i, legacy);
+}
+
 Params ParamReader::read (bool legacy) const noexcept
 {
+    float v[numParameters];
+    values (v, legacy);
+    return toParams (v);
+}
+
+Params ParamReader::toParams (const float* v) noexcept
+{
     int i = 0;
-    auto next = [&] { return value (i++, legacy); };
+    auto next = [&] { return v[i++]; };
     auto pct = [&] { return next() * 0.01f; };
     auto idx = [&] { return (int) std::lround (next()); };
 
@@ -360,7 +398,8 @@ Params ParamReader::read (bool legacy) const noexcept
     p.panOwnership = (PanOwnership) idx();
     p.widthMode = (WidthMode) idx();
     p.aswTarget = next();
-    jassert (i == numParameters);
+    p.guardCeilingDb = next();
+    jassert (i == numCoreParameters);
     return p;
 }
 } // namespace sph

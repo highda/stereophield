@@ -349,5 +349,5 @@ TEST_CASE ("P2-T34 every parameter is in its host group", "[P2-T34]")
             ++grouped;
         }
     CHECK (grouped == numParameters);
-    CHECK (tree.getSubgroups (false).size() == 13);
+    CHECK (tree.getSubgroups (false).size() == 14);
 }

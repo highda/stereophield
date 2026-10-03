@@ -64,6 +64,7 @@ void SideBus::setParams (const Params& p, bool snap)
     width.setTargetValue (p.width);
     midBlend.setTargetValue (p.midBlend);
     guardMix.setTargetValue (p.guard ? 1.0f : 0.0f);
+    guardCeiling = std::pow (10.0, std::min (0.0f, p.guardCeilingDb) / 10.0);
 
     // The split runs (crossfaded in) unless the three gains are equal and settled.
     const bool equal = p.bandLow == p.bandMid && p.bandMid == p.bandHigh;
@@ -187,7 +188,8 @@ void SideBus::process (const float* sBus, const float* sPost, const float* dBus,
             {
                 const double pm = guardPm.process ((double) mo * mo);
                 const double ps = guardPs.process ((double) sw * sw);
-                const double target = ps > pm ? std::sqrt (pm / (ps + 1.0e-20)) : 1.0;
+                const double ceiling = guardCeiling * pm;
+                const double target = ps > ceiling ? std::sqrt (ceiling / (ps + 1.0e-20)) : 1.0;
                 g = 1.0f + wG * ((float) guardG.process (target) - 1.0f);
             }
             sSyn[i] = flushTiny (g * sw);

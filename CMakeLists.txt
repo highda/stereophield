@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "" FORCE)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 12.0 CACHE STRING "" FORCE)
 
-project(stereophield VERSION 2.0.0 LANGUAGES C CXX)
+project(stereophield VERSION 3.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -133,6 +133,13 @@ target_sources(sph_velvet_opt PRIVATE tools/velvet_opt.cpp)
 target_compile_options(sph_velvet_opt PRIVATE ${SPH_WARNINGS})
 target_link_libraries(sph_velvet_opt PRIVATE sph_dsp juce::juce_recommended_config_flags)
 
-foreach(tool sph_tests sph_plugin_tests sph_measure sph_velvet_opt)
+juce_add_console_app(sph_easy_opt PRODUCT_NAME "sph_easy_opt")
+target_sources(sph_easy_opt PRIVATE tools/easy_opt.cpp ${SPH_MEASURE_DSP} ${SPH_MEASURE_PLUGIN})
+target_include_directories(sph_easy_opt PRIVATE tests)
+target_compile_definitions(sph_easy_opt PRIVATE SPH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_compile_options(sph_easy_opt PRIVATE ${SPH_WARNINGS})
+target_link_libraries(sph_easy_opt PRIVATE sph_plugin_code juce::juce_recommended_config_flags)
+
+foreach(tool sph_tests sph_plugin_tests sph_measure sph_velvet_opt sph_easy_opt)
     set_target_properties(${tool} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 endforeach()

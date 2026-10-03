@@ -1,6 +1,8 @@
 #pragma once
 
 #include "dsp/Core.h"
+#include "dsp/MaterialClassifier.h"
+#include "plugin/EasyMode.h"
 #include "plugin/Parameters.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -84,6 +86,27 @@ public:
     int uiLanguage() const noexcept { return language; }
     void setUiLanguage (int l);
 
+    // Easy mode (PART3_LEDGER.md). Expand writes the mapped values into every
+    // parameter and switches to Complete, as one undo point; nothing is
+    // heard. Collapse switches back to Easy and needs the user's
+    // confirmation; without it nothing changes. Message thread.
+    bool isEasyMode() const;
+    void expandToComplete();
+    bool collapseToEasy (bool confirmed);
+
+    // The plain values the engine would read now: the parameters, or in Easy
+    // mode the mapping of the macros (with the latest classifier weights).
+    Snapshot effectiveValues() const;
+
+    // The classifier's weights (percussive, tonal, mixed), as last published
+    // by the audio thread.
+    easy::Weights materialWeights() const noexcept;
+
+    // Tests and the optimiser: a candidate table instead of the shipped one
+    // (null for the shipped one), and fixed material weights instead of the
+    // classifier's (null to use the classifier). Call before rendering.
+    void setEasyOverrides (const easy::Table* table, const easy::Weights* weights);
+
     // Applies the core's latency now; tests call this instead of running a
     // message loop.
     void flushLatencyUpdate()
@@ -112,6 +135,20 @@ private:
     std::atomic<const std::vector<float>*> teachActive { nullptr };
     size_t teachPos = 0;
     void setExact (juce::RangedAudioParameter* p, float plainValue);
+    Snapshot defaults {};
+    MaterialClassifier classifier;
+    std::array<std::atomic<float>, easy::numClasses> weightsOut {};
+    std::vector<float> monoTmp;
+    std::atomic<const easy::Table*> tableOverride { nullptr };
+    std::atomic<bool> weightsForced { false };
+    const easy::Table& easyTable() const noexcept
+    {
+        const auto* t = tableOverride.load (std::memory_order_acquire);
+        return t != nullptr ? *t : easy::table();
+    }
+    bool stereoInput() const { return getTotalNumInputChannels() >= 2; }
+    // The values for one block (audio thread).
+    void blockValues (float* v);
     void buildTeachingSignals (double sampleRate);
     // True while rendering a session saved by 1.0 (see ParamReader).
     std::atomic<bool> legacyValues { false };

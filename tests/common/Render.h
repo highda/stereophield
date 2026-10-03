@@ -28,6 +28,9 @@ public:
         layout.inputBuses.add (inputs == 1 ? juce::AudioChannelSet::mono() : juce::AudioChannelSet::stereo());
         layout.outputBuses.add (juce::AudioChannelSet::stereo());
         proc->setBusesLayout (layout);
+        // Tests of the engine drive its parameters directly: the complete
+        // interface. Easy mode tests switch back (PART3_LEDGER.md).
+        set (ids::ui_mode, 1.0f);
     }
 
     StereophieldProcessor& processor() { return *proc; }
