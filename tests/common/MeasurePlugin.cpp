@@ -1259,3 +1259,192 @@ Result p2t18CoherenceCost()
     return r;
 }
 } // namespace sph::measure
+
+namespace sph::measure
+{
+Result p2t28FluxDetector()
+{
+    Result r { "P2-T28", "Spectral-flux detector (Full engine): mean e <= 0.1 on steady noise and <= 0.05 on twoSource after 1.2 s; every click of clicks gives e >= 0.9", "", false, true, "" };
+    auto envelope = [] (const Signal& x, double fromSeconds, float& maxOut, std::vector<float>* perBlock)
+    {
+        Plugin pl;
+        pl.set (ids::engine, 1);
+        pl.set (ids::transient_mode, 1);
+        pl.prepare();
+        juce::AudioBuffer<float> buf (2, pl.block);
+        juce::MidiBuffer midi;
+        double sum = 0.0;
+        int count = 0;
+        maxOut = 0.0f;
+        for (size_t pos = 0; pos + (size_t) pl.block <= x.size(); pos += (size_t) pl.block)
+        {
+            buf.clear();
+            buf.copyFrom (0, 0, x.data() + pos, pl.block);
+            pl.processor().processBlock (buf, midi);
+            const auto& c = pl.core();
+            if (perBlock != nullptr)
+                perBlock->push_back (c.lastEnvelopeMax());
+            if ((double) pos / pl.fs >= fromSeconds)
+            {
+                sum += c.lastEnvelopeMean();
+                ++count;
+                maxOut = std::max (maxOut, c.lastEnvelopeMax());
+            }
+        }
+        return count > 0 ? sum / count : 0.0;
+    };
+    const double fs = 48000.0;
+    float mx = 0.0f;
+    const double eNoise = envelope (noise (samples (6.0, fs)), 1.0, mx, nullptr);
+    const double eTones = envelope (tile (twoSource (fs), samples (3.0, fs)), 1.2, mx, nullptr);
+    std::vector<float> blocks;
+    envelope (clicks (samples (4.0, fs), fs), 0.0, mx, &blocks);
+    // Each click reaches the output one latency later; its block must show e >= 0.9.
+    float weakest = 1.0f;
+    const int lat = Core::latencyFor (Engine::Full, fs);
+    for (int c = 1; c * samples (0.25, fs) + lat < samples (4.0, fs) - 1024; ++c)
+    {
+        const size_t at = (size_t) (c * samples (0.25, fs) + lat) / 512;
+        float v = 0.0f;
+        for (size_t b = at > 0 ? at - 1 : 0; b <= at + 1 && b < blocks.size(); ++b)
+            v = std::max (v, blocks[b]);
+        weakest = std::min (weakest, v);
+    }
+    r.pass = eNoise <= 0.1 && eTones <= 0.05 && weakest >= 0.9;
+    r.measured = "mean e: noise " + fmt (eNoise, 3) + ", twoSource " + fmt (eTones, 3) + "; weakest click " + fmt (weakest, 2);
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+Result p2t26SeamlessChanges()
+{
+    Result r { "P2-T26", "Structural changes (every Part 1 generator choice, double-tracker seed, listen) and a Velvet size sweep: RMS of every 10 ms window within 1.5 dB of the range spanned by time-aligned renders with the old and the new setting (side for generators, output for listen)", "", true, true, "" };
+    struct Scenario
+    {
+        const char* name;
+        const char* gen;          // amount parameter of the generator under test (null: listen)
+        const char* id;           // parameter changed at 2 s
+        float from, to;
+        bool sweep;               // velvet size sweep instead of a step
+    };
+    const Scenario scenarios[] = {
+        { "spread type", ids::spread_amount, ids::spread_type, 1, 0, false },
+        { "spread density", ids::spread_amount, ids::spread_density, 8, 16, false },
+        { "spread source", ids::spread_amount, ids::spread_source, 0, 2, false },
+        { "delay source", ids::delay_amount, ids::delay_source, 0, 3, false },
+        { "mod type", ids::mod_amount, ids::mod_type, 0, 1, false },
+        { "mod source", ids::mod_amount, ids::mod_source, 0, 1, false },
+        { "velvet variation", ids::velvet_amount, ids::velvet_variation, 0, 5, false },
+        { "velvet design", ids::velvet_amount, ids::velvet_design, 1, 0, false },
+        { "velvet size sweep", ids::velvet_amount, ids::velvet_size_ms, 10, 80, true },
+        { "double seed", ids::dbl_amount, ids::dbl_seed, 0, 7, false },
+        { "listen", nullptr, ids::listen, 0, 1, false },
+    };
+    const double fs = 48000.0;
+    const int block = 512;
+    const Signal x = noise (samples (4.0, fs));
+    const size_t w = (size_t) samples (0.010, fs);
+    double worst = 0.0;
+    std::string worstName;
+    for (const auto& sc : scenarios)
+    {
+        auto render = [&] (float startValue, bool change)
+        {
+            Plugin pl (fs, block);
+            pl.set (ids::spread_amount, sc.gen != nullptr ? 0.0f : 100.0f);
+            if (sc.gen != nullptr)
+                pl.set (sc.gen, 100);
+            pl.set (ids::guard, 0);
+            pl.set (ids::transient_duck, 0);
+            pl.set (sc.id, startValue);
+            pl.prepare();
+            std::vector<Automation> ev;
+            const size_t at = (size_t) (2.0 * fs / block);
+            const size_t len = (size_t) (2.0 * fs / block);
+            if (change && sc.sweep)
+                for (size_t bi = 0; bi < len; ++bi)
+                    ev.push_back ({ at + bi, sc.id, sc.from + (sc.to - sc.from) * (float) bi / (float) len });
+            else if (change)
+                ev.push_back ({ at, sc.id, sc.to });
+            return renderAutomated (pl, x, ev);
+        };
+        auto level = [&] (const Stereo& y, size_t from)
+        {
+            double e = 0.0;
+            for (size_t i = from; i < from + w; ++i)
+            {
+                const double sd = 0.5 * ((double) y.l[i] - y.r[i]), md = 0.5 * ((double) y.l[i] + y.r[i]);
+                e += sc.gen != nullptr ? sd * sd : sd * sd + md * md;
+            }
+            return 10.0 * std::log10 (e / (double) w + 1e-30);
+        };
+        const auto y = render (sc.from, true), ya = render (sc.from, false), yb = render (sc.to, false);
+        for (size_t s0 = (size_t) samples (1.9, fs); s0 + w <= (size_t) samples (sc.sweep ? 4.0 : 2.5, fs); s0 += w)
+        {
+            const double v = level (y, s0), a = level (ya, s0), b = level (yb, s0);
+            const double excess = std::max (std::min (a, b) - 1.5 - v, v - std::max (a, b) - 1.5);
+            if (excess > worst)
+            {
+                worst = excess;
+                worstName = sc.name;
+            }
+        }
+    }
+    r.pass = worst <= 0.0;
+    r.measured = worst <= 0.0 ? "all 11 scenarios within 1.5 dB" : "worst excess " + fmt (worst, 2) + " dB beyond the 1.5 dB band (" + worstName + ")";
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+Result p2t27ConstantLatency()
+{
+    Result r { "P2-T27", "Latency mode Always Full, engine switched both ways during noise: no 10 ms window of output RMS more than 1 dB below the time-aligned renders with either engine; reported latency never changes", "", true, false, "" };
+    const double fs = 48000.0;
+    const int block = 512;
+    const Signal x = noise (samples (5.0, fs));
+    auto render = [&] (int startEngine, bool change, bool& latencyConstant)
+    {
+        Plugin pl (fs, block);
+        pl.set (ids::latency_mode, 1);
+        pl.set (ids::engine, (float) startEngine);
+        pl.set (ids::pan_amount, 50);
+        pl.set (ids::spread_source, 2); // a spectral source: switches instance
+        pl.prepare();
+        const int lat = pl.latency();
+        std::vector<Automation> ev;
+        if (change)
+        {
+            ev.push_back ({ (size_t) (2.0 * fs / block), ids::engine, (float) (1 - startEngine) });
+            ev.push_back ({ (size_t) (3.5 * fs / block), ids::engine, (float) startEngine });
+        }
+        const auto y = renderAutomated (pl, x, ev);
+        pl.processor().flushLatencyUpdate();
+        latencyConstant = latencyConstant && pl.latency() == lat && lat == Core::latencyFor (Engine::Full, fs)
+                          && ! pl.core().latencyChanged.load();
+        return y;
+    };
+    bool constant = true;
+    double worst = 0.0;
+    const size_t w = (size_t) samples (0.010, fs);
+    for (int start = 0; start < 2; ++start)
+    {
+        const auto y = render (start, true, constant), ya = render (0, false, constant), yb = render (1, false, constant);
+        auto level = [&] (const Stereo& s, size_t from)
+        {
+            double e = 0;
+            for (size_t i = from; i < from + w; ++i)
+                e += 0.5 * ((double) s.l[i] * s.l[i] + (double) s.r[i] * s.r[i]);
+            return 10.0 * std::log10 (e / (double) w + 1e-30);
+        };
+        for (size_t s0 = (size_t) samples (1.5, fs); s0 + w <= (size_t) samples (4.5, fs); s0 += w)
+            worst = std::max (worst, std::min (level (ya, s0), level (yb, s0)) - level (y, s0));
+    }
+    r.pass = worst <= 1.0 && constant;
+    r.measured = "largest window drop " + fmt (worst, 2) + " dB; latency " + (constant ? "constant" : "changed");
+    return r;
+}
+} // namespace sph::measure

@@ -23,6 +23,8 @@ void DoubleTracker::prepare (const ProcessSpec& spec)
     line.prepare ((int) std::ceil (0.062 * fs) + 4);
     fader.prepare (fs);
     offsetMs.setTimeConstant (0.050, fs / controlInterval);
+    for (auto& tk : takes)
+        tk.delaySmooth.setTimeConstant (0.003, fs);
     appliedRate = -1.0f;
     appliedTone = 1e9f;
     updateRates();
@@ -96,6 +98,7 @@ void DoubleTracker::reset()
         const double d = std::clamp (offsetTarget * 0.001 + driftMs * 0.001 * tk.timing.y2 * tk.timing.norm
                                          + wowAmplitudeSeconds * tk.wow.y2 * tk.wow.norm, 0.001, 0.060) * fs;
         tk.prevDelay = tk.nextDelay = d;
+        tk.delaySmooth.reset (d);
         tk.prevGain = tk.nextGain = std::pow (10.0, levelDb * tk.level.y2 * tk.level.norm / 20.0);
         lastDelay[(size_t) t] = d;
     }
@@ -118,7 +121,7 @@ void DoubleTracker::setParams (const Params& p, bool snap)
         seedTakes();
         reset();
     }
-    else if (! (wanted == current))
+    else if (! (wanted == current) && ! externalSwitching)
         fader.request();
 }
 
@@ -134,6 +137,29 @@ void DoubleTracker::controlStep() noexcept
         tk.nextDelay = std::clamp (t + w, 0.001, 0.060) * fs;
         tk.nextGain = std::pow (10.0, levelDb * tk.level.step (tk.rng) / 20.0);
     }
+}
+
+void DoubleTracker::copyDriftFrom (const DoubleTracker& o) noexcept
+{
+    for (int t = 0; t < 2; ++t)
+    {
+        auto& a = takes[(size_t) t];
+        const auto& b = o.takes[(size_t) t];
+        a.rng = b.rng;
+        a.timing.y1 = b.timing.y1;
+        a.timing.y2 = b.timing.y2;
+        a.wow.y1 = b.wow.y1;
+        a.wow.y2 = b.wow.y2;
+        a.level.y1 = b.level.y1;
+        a.level.y2 = b.level.y2;
+        a.prevDelay = b.prevDelay;
+        a.nextDelay = b.nextDelay;
+        a.prevGain = b.prevGain;
+        a.nextGain = b.nextGain;
+        a.delaySmooth.reset (b.delaySmooth.current());
+    }
+    phase = o.phase;
+    offsetMs.reset (o.offsetMs.current());
 }
 
 void DoubleTracker::advanceWhileAsleep (int numSamples) noexcept
@@ -174,7 +200,7 @@ void DoubleTracker::process (const Buses& buses, float* s, float* m, int numSamp
         for (int k = 0; k < 2; ++k)
         {
             auto& tk = takes[(size_t) k];
-            const double d = tk.prevDelay + t * (tk.nextDelay - tk.prevDelay);
+            const double d = tk.delaySmooth.process (tk.prevDelay + t * (tk.nextDelay - tk.prevDelay));
             const double gain = tk.prevGain + t * (tk.nextGain - tk.prevGain);
             lastDelay[(size_t) k] = d;
             out[k] = (float) (gain * tk.shelf.process (line.readLagrange (d)));

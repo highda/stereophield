@@ -28,7 +28,9 @@ public:
         e = 0.0;
     }
 
-    void process (const float* m, float* out, int numSamples) noexcept
+    // ratio (may be null) receives fast / slow per sample, which locates an
+    // onset within a frame for the spectral-flux detector.
+    void process (const float* m, float* out, int numSamples, float* ratio = nullptr) noexcept
     {
         for (int i = 0; i < numSamples; ++i)
         {
@@ -36,6 +38,8 @@ public:
             const double f = fast.process (x);
             const double s = slow.process (x);
             const double r = f / (s + 1.0e-6);
+            if (ratio != nullptr)
+                ratio[i] = (float) r;
             double raw = (r - ratioThreshold) / ratioRange;
             raw = f < 1.0e-4 ? 0.0 : (raw < 0.0 ? 0.0 : (raw > 1.0 ? 1.0 : raw));
             const double held = e * hold;

@@ -55,7 +55,7 @@ void Mod::setParams (const Params& p, bool snap)
         fader.snap();
         reset();
     }
-    else if (! (wanted == current))
+    else if (! (wanted == current) && ! externalSwitching)
         fader.request();
 }
 
@@ -81,6 +81,14 @@ void Mod::stepPhasors() noexcept
     // With zero cents the phasors hold still.
     phiL = wrap (phiL + phiIncL);
     phiR = wrap (phiR + phiIncR);
+}
+
+void Mod::copyPhaseFrom (const Mod& o) noexcept
+{
+    phase = o.phase;
+    lfoSmooth.reset (o.lfoSmooth.current());
+    phiL = o.phiL;
+    phiR = o.phiR;
 }
 
 void Mod::advanceWhileAsleep (int numSamples) noexcept

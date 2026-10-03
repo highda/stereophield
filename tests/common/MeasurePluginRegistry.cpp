@@ -41,7 +41,12 @@ const std::vector<Entry>& registry()
         { "P2-T16", p2t16PhysicalCurves },
         { "P2-T17", p2t17CoherenceSafe },
         { "P2-T18", p2t18CoherenceCost },
+        { "P2-T19", p2t19DoubleDrift },
+        { "P2-T20", p2t20DoubleClean },
         { "P2-T25", p2t25OptimisedVelvet },
+        { "P2-T26", p2t26SeamlessChanges },
+        { "P2-T27", p2t27ConstantLatency },
+        { "P2-T28", p2t28FluxDetector },
         { "P2-T36", p2t36PerceptualMetrics },
     };
     return entries;

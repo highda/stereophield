@@ -33,11 +33,17 @@ public:
     void setParams (const Params& p, bool snap);
     void process (const Buses& buses, float* s, float* m, int numSamples) noexcept;
     void advanceWhileAsleep (int numSamples) noexcept;
+    // Takes over another instance's drift processes (same seed only).
+    void copyDriftFrom (const DoubleTracker& other) noexcept;
     int tailSamples() const noexcept { return (int) std::ceil (0.065 * fs); }
 
     const Structure& active() const noexcept { return current; }
     const Structure& pending() const noexcept { return wanted; }
     bool isSettled() const noexcept { return fader.isSettled(); }
+
+    // When set, structural changes are left to the owner (which crossfades
+    // between two instances) instead of the internal fade.
+    bool externalSwitching = false;
 
     // Test hooks: read delay of a take in samples at the last sample, and
     // optional taps receiving the two takes.
@@ -67,6 +73,7 @@ private:
         Drift timing, wow, level;
         double prevDelay = 0, nextDelay = 0, prevGain = 1, nextGain = 1;
         Biquad shelf;
+        OnePole delaySmooth; // keeps the delay's slope (pitch) continuous
     };
 
     void controlStep() noexcept;

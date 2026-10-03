@@ -27,7 +27,8 @@ private:
     double fs = 48000.0;
     juce::SmoothedValue<float> gain, compMix, bypassMix;
     OnePole pm2, ps2;
-    Listen listen = Listen::Stereo;
+    Listen listen = Listen::Stereo, listenFrom = Listen::Stereo;
+    int listenFade = 0, listenFadeLen = 960;
     float lastC = 1.0f;
 };
 } // namespace sph

@@ -31,11 +31,17 @@ public:
     void setParams (const Params& p, bool snap);
     void process (const Buses& buses, float* s, float* m, int numSamples) noexcept;
     void advanceWhileAsleep (int numSamples) noexcept;
+    // Takes over another instance's LFO and phasors (not its audio state).
+    void copyPhaseFrom (const Mod& other) noexcept;
     int tailSamples() const noexcept { return (int) std::ceil (0.080 * fs); }
 
     const Structure& active() const noexcept { return current; }
     const Structure& pending() const noexcept { return wanted; }
     bool isSettled() const noexcept { return fader.isSettled(); }
+
+    // When set, structural changes are left to the owner (which crossfades
+    // between two instances) instead of the internal fade.
+    bool externalSwitching = false;
 
     // Test hooks: chorus delays of the last sample in ms, and optional taps
     // that receive pL and pR.

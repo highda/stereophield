@@ -7,6 +7,7 @@
 #include "dsp/PanMap.h"
 #include "dsp/Stft.h"
 
+#include <array>
 #include <complex>
 #include <vector>
 
@@ -31,7 +32,20 @@ public:
         bool pan = false;
         bool coherence = false;
         bool expander = false;
+        bool flux = false;
     };
+
+    // Onsets found by the spectral-flux detector (PART2_LEDGER.md I4) during
+    // the last process() call: sample index within that call, and strength.
+    struct Onset
+    {
+        int index;
+        float strength;
+    };
+    static constexpr int maxOnsets = 64;
+    int numOnsets() const noexcept { return onsetCount; }
+    const Onset& onset (int i) const noexcept { return onsets[(size_t) i]; }
+    float lastFlux() const noexcept { return fluxValue; }
 
     void prepare (double sampleRate);
     void reset();       // stage state only; the STFT keeps its framing
@@ -71,7 +85,8 @@ public:
     const std::vector<float>& ambienceMask() const noexcept { return ma; }
 
 private:
-    void analyseFrame (const Needs& needs) noexcept;
+    void analyseFrame (const Needs& needs, int index) noexcept;
+    void detectOnset (int index) noexcept;
 
     double fs = 48000.0;
     double amb = 0.5, decay = 1.0;
@@ -85,7 +100,12 @@ private:
     Stft stftD, stftS;
     std::vector<std::complex<float>> specD, specS;
     std::vector<std::complex<float>> spec, bus;
-    std::vector<float> mag, mt, mx, mn, ma;
+    std::vector<float> mag, mt, mx, mn, ma, prevLog;
     int frames = 0;
+    std::array<float, 16> fluxHistory {};
+    int fluxPos = 0, fluxLo = 1, fluxHi = 2;
+    float fluxValue = 0.0f;
+    std::array<Onset, maxOnsets> onsets {};
+    int onsetCount = 0;
 };
 } // namespace sph

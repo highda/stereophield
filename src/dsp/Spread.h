@@ -37,6 +37,10 @@ public:
     const Structure& pending() const noexcept { return wanted; }
     bool isSettled() const noexcept { return fader.isSettled(); }
 
+    // When set, structural changes are left to the owner (which crossfades
+    // between two instances) instead of the internal fade.
+    bool externalSwitching = false;
+
     // Test hook: centre frequency of cascade section i.
     double sectionFrequency (int i) const noexcept { return freqs[(size_t) i]; }
 

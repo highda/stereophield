@@ -25,6 +25,21 @@
 
 namespace sph
 {
+// Two instances of a generator for seamless structural changes
+// (PART2_LEDGER.md I2): the idle one takes the new structure, is pre-rolled
+// on recent input and crossfades in with equal power.
+template <typename G>
+struct GenPair
+{
+    std::array<G, 2> inst;
+    int cur = 0, fadePos = 1, fadeLen = 1;
+    float pn = 0.0f, po = 0.0f, pc = 0.0f; // crossfade power tracking
+    G& now() noexcept { return inst[(size_t) cur]; }
+    const G& now() const noexcept { return inst[(size_t) cur]; }
+    G& old() noexcept { return inst[(size_t) (1 - cur)]; }
+    bool fading() const noexcept { return fadePos < fadeLen; }
+};
+
 // The complete signal graph of DESIGN.md section 4.1, independent of the
 // plugin wrapper. Real-time safe after prepare().
 class Core
@@ -47,7 +62,7 @@ public:
     // inR may be null for a mono input. Output may alias input.
     void process (const float* inL, const float* inR, float* outL, float* outR, int numSamples) noexcept;
 
-    static int latencyFor (Engine engine, double sampleRate) noexcept;
+    static int latencyFor (Engine engine, double sampleRate, LatencyMode mode = LatencyMode::PerEngine) noexcept;
     int latencySamples() const noexcept { return latency; }
     Engine activeEngine() const noexcept { return engine; }
 
@@ -65,13 +80,18 @@ public:
     // Read-only test hooks.
     const SleepController& sleepController (GeneratorId g) const noexcept { return slots[(size_t) g].sleep; }
     const SleepController& sideBusSleep() const noexcept { return sideSleep; }
-    const Spread& spread() const noexcept { return spreadGen; }
-    const HaasDelay& haas() const noexcept { return haasGen; }
-    const Mod& mod() const noexcept { return modGen; }
-    const Velvet& velvet() const noexcept { return velvetGen; }
-    const DoubleTracker& doubler() const noexcept { return dblGen; }
+    const Spread& spread() const noexcept { return spreads.now(); }
+    const HaasDelay& haas() const noexcept { return haases.now(); }
+    const Mod& mod() const noexcept { return mods.now(); }
+    const Velvet& velvet() const noexcept { return velvets.now(); }
+    const DoubleTracker& doubler() const noexcept { return doubles.now(); }
+    // True while generator g crossfades between two structures.
+    bool switching (GeneratorId g) const noexcept;
     const RoomCues& room() const noexcept { return roomGen; }
     bool expanderActive() const noexcept { return expanderOn; }
+    // Mean and maximum of the transient envelope e(n) over the last chunk.
+    float lastEnvelopeMean() const noexcept { return envMean; }
+    float lastEnvelopeMax() const noexcept { return envMax; }
     const SideBus& sideBus() const noexcept { return side; }
     const Analysis& analysis() const noexcept { return analyser; }
     const SleepController& analysisSleep() const noexcept { return analyserSleep; }
@@ -111,13 +131,33 @@ private:
     PanMode panMode = PanMode::Groups;
     TransientDetector detector;
     SleepController detectorSleep;
-    Spread spreadGen;
-    HaasDelay haasGen;
-    Mod modGen;
-    Velvet velvetGen;
-    DoubleTracker dblGen;
+    GenPair<Spread> spreads;
+    GenPair<HaasDelay> haases;
+    GenPair<Mod> mods;
+    GenPair<Velvet> velvets;
+    GenPair<DoubleTracker> doubles;
+    // Recent input of each bus, for pre-rolling a switched instance.
+    std::array<std::vector<float>, 4> history;
+    int historyPos = 0;
+    float fadeTrack = 0.0f;
+    std::vector<float> preIn, preS, preM, sOld, mOld, fullW;
+    template <typename G> void startSwitch (GenPair<G>& pair);
+    template <typename G> void preRoll (G& g, Source src);
     RoomCues roomGen;
     juce::SmoothedValue<float> expanderMix;
+    // Weight of the Full-only parts (Pan map, coherence, expander). In the
+    // Always Full latency mode an engine switch fades them instead of the
+    // whole output; fullWarmup delays the fade-in until the analysis is valid.
+    juce::SmoothedValue<float> fullMix;
+    int fullWarmup = 0;
+    LatencyMode latencyMode = LatencyMode::PerEngine;
+    template <typename G> void switchIfSpectral (GenPair<G>& pair, GeneratorId g);
+    // Spectral-flux transient envelope (Full engine): onset markers on the
+    // output time axis, the detector's ratio over the last N inputs.
+    std::vector<float> fluxMarkers, ratioRing, ratio;
+    int64_t inputTime = 0;
+    float envMean = 0.0f, envMax = 0.0f;
+    double fluxEnvelope = 0.0, fluxHold = 0.0;
     bool expanderOn = false;
     std::array<Slot, numGenerators> slots;
     SideBus side;

@@ -1,5 +1,6 @@
 #include "dsp/OutputStage.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace sph
@@ -15,6 +16,7 @@ void OutputStage::prepare (const ProcessSpec& spec)
     for (auto* sv : { &gain, &compMix, &bypassMix })
         sv->reset (fs, 0.020);
     pm2.setTimeConstant (0.300, fs);
+    listenFadeLen = std::max (1, (int) std::lround (0.020 * fs));
     ps2.setTimeConstant (0.300, fs);
     reset();
 }
@@ -33,9 +35,18 @@ void OutputStage::setParams (const Params& p, bool snap)
     gain.setTargetValue (std::pow (10.0f, p.outGainDb / 20.0f));
     compMix.setTargetValue (p.compMode == CompMode::ConstantLoudness ? 1.0f : 0.0f);
     bypassMix.setTargetValue (p.bypass ? 1.0f : 0.0f);
-    listen = p.listen;
+    if (p.listen != listen)
+    {
+        // Crossfade from the mode currently heard (PART2_LEDGER.md I6).
+        listenFrom = listenFade > 0 ? listenFrom : listen;
+        listen = p.listen;
+        listenFade = snap ? 0 : listenFadeLen;
+    }
     if (snap)
+    {
+        listenFade = 0;
         reset();
+    }
 }
 
 void OutputStage::process (const float* mOut, const float* sSyn, const float* mD, const float* sInD,
@@ -67,10 +78,25 @@ void OutputStage::process (const float* mOut, const float* sSyn, const float* mD
         l *= g;
         r *= g;
 
-        if (listen == Listen::Mono)
-            l = r = 0.5f * (l + r);
-        else if (listen == Listen::Side)
-            l = r = 0.5f * (l - r);
+        auto apply = [] (Listen mode, float& a, float& b)
+        {
+            if (mode == Listen::Mono)
+                a = b = 0.5f * (a + b);
+            else if (mode == Listen::Side)
+                a = b = 0.5f * (a - b);
+        };
+        if (listenFade > 0)
+        {
+            float l0 = l, r0 = r;
+            apply (listenFrom, l0, r0);
+            apply (listen, l, r);
+            const float w = (float) listenFade / (float) listenFadeLen;
+            l = w * l0 + (1.0f - w) * l;
+            r = w * r0 + (1.0f - w) * r;
+            --listenFade;
+        }
+        else
+            apply (listen, l, r);
 
         const float wB = bypassMix.getNextValue();
         const float bl = mD[i] + sInD[i], br = mD[i] - sInD[i];

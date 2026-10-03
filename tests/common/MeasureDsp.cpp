@@ -2,6 +2,7 @@
 
 #include "common/SignalMath.h"
 #include "dsp/Analysis.h"
+#include "dsp/DoubleTracker.h"
 #include "dsp/Mod.h"
 #include "dsp/Stft.h"
 #include "dsp/Velvet.h"
@@ -388,6 +389,135 @@ Result t12Ambience()
     const double steady = steadyNum / steadyDen, dec = decayNum / decayDen;
     r.pass = steady <= 0.1 && dec >= 0.3;
     r.measured = "steady " + fmt (steady, 3) + ", decaying " + fmt (dec, 3);
+    return r;
+}
+} // namespace sph::measure
+
+namespace sph::measure
+{
+namespace
+{
+// Delay trajectories of both takes over a render of x.
+void delayTrajectories (DoubleTracker& d, const Signal& x, std::vector<double>& a, std::vector<double>& b)
+{
+    a.resize (x.size());
+    b.resize (x.size());
+    float s = 0, m = 0;
+    for (size_t i = 0; i < x.size(); ++i)
+    {
+        Buses bus { &x[i], &x[i], &x[i], &x[i] };
+        d.process (bus, &s, &m, 1);
+        a[i] = d.delaySamples (0);
+        b[i] = d.delaySamples (1);
+    }
+}
+} // namespace
+
+Result p2t19DoubleDrift()
+{
+    Result r { "P2-T19", "Double-tracker over 300 s: each take's delay within offset +- 3.5 drift; pitch-only wow has a standard deviation within 20 % of dbl_pitch_cents; the two takes' drifts are uncorrelated (|rho| <= 0.2)", "", false, true, "" };
+    const double fs = 48000.0;
+    // 300 s: a 0.3 Hz drift gives too few independent samples in 60 s to
+    // estimate a correlation to +-0.2.
+    const Signal x = noise (samples (300.0, fs));
+
+    // Timing drift alone.
+    DoubleTracker d;
+    Params p;
+    p.dblPitchCents = 0.0f;
+    d.prepare ({ fs, 512 });
+    d.setParams (p, true);
+    std::vector<double> a, b;
+    delayTrajectories (d, x, a, b);
+    const double off = p.dblOffsetMs * 0.001 * fs, lim = 3.5 * p.dblDriftMs * 0.001 * fs;
+    double worst = 0.0, ma = 0, mb = 0;
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        worst = std::max ({ worst, std::abs (a[i] - off), std::abs (b[i] - off) });
+        ma += a[i];
+        mb += b[i];
+    }
+    ma /= (double) a.size();
+    mb /= (double) b.size();
+    double sab = 0, saa = 0, sbb = 0;
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        sab += (a[i] - ma) * (b[i] - mb);
+        saa += (a[i] - ma) * (a[i] - ma);
+        sbb += (b[i] - mb) * (b[i] - mb);
+    }
+    const double rho = sab / std::sqrt (saa * sbb);
+
+    // Pitch wow alone: cents from the delay's slope.
+    DoubleTracker w;
+    Params q;
+    q.dblDriftMs = 0.0f;
+    q.dblPitchCents = 4.0f;
+    w.prepare ({ fs, 512 });
+    w.setParams (q, true);
+    std::vector<double> c, e;
+    delayTrajectories (w, x, c, e);
+    double s1 = 0, s2 = 0;
+    size_t cnt = 0;
+    for (size_t i = (size_t) fs; i < c.size(); ++i)
+    {
+        const double cents = 1200.0 * std::log2 (1.0 - (c[i] - c[i - 1]));
+        s1 += cents;
+        s2 += cents * cents;
+        ++cnt;
+    }
+    const double sd = std::sqrt (s2 / (double) cnt - (s1 / (double) cnt) * (s1 / (double) cnt));
+    r.pass = worst <= lim && std::abs (sd - 4.0) <= 0.8 && std::abs (rho) <= 0.2;
+    r.measured = "worst delay deviation " + fmt (worst / lim * 3.5, 2) + " x drift (limit 3.5); wow " + fmt (sd, 2)
+                 + " cents for 4; drift correlation " + fmt (rho, 3);
+    return r;
+}
+
+Result p2t20DoubleClean()
+{
+    Result r { "P2-T20", "Double-tracker: at defaults no delay step above 0.05 samples; at any setting no slope change above 0.01 samples per sample (no click); no NaN under 50 random settings", "", true, false, "" };
+    const double fs = 48000.0;
+    const Signal x = noise (samples (10.0, fs));
+    double step = 0.0, curve = 0.0;
+    bool finite = true;
+    for (int set = 0; set < 51; ++set)
+    {
+        Params p;
+        if (set > 0)
+        {
+            Rng rng (700u + (uint32_t) set);
+            p.dblOffsetMs = (float) (5.0 + 35.0 * rng.uniform());
+            p.dblDriftMs = (float) (10.0 * rng.uniform());
+            p.dblDriftRate = (float) (0.05 * std::pow (40.0, rng.uniform()));
+            p.dblPitchCents = (float) (20.0 * rng.uniform());
+            p.dblLevelDb = (float) (3.0 * rng.uniform());
+            p.dblToneDb = (float) (-6.0 + 12.0 * rng.uniform());
+            p.dblSeed = (int) (16 * rng.uniform());
+        }
+        DoubleTracker d;
+        d.prepare ({ fs, 512 });
+        d.setParams (p, true);
+        std::vector<double> a (x.size()), b (x.size());
+        float s = 0, m = 0;
+        for (size_t i = 0; i < x.size(); ++i)
+        {
+            Buses bus { &x[i], &x[i], &x[i], &x[i] };
+            d.process (bus, &s, &m, 1);
+            finite = finite && std::isfinite (s) && std::isfinite (m);
+            a[i] = d.delaySamples (0);
+            b[i] = d.delaySamples (1);
+            if (i >= 2)
+                for (const auto* v : { &a, &b })
+                {
+                    if (set == 0)
+                        step = std::max (step, std::abs ((*v)[i] - (*v)[i - 1]));
+                    curve = std::max (curve, std::abs ((*v)[i] - 2.0 * (*v)[i - 1] + (*v)[i - 2]));
+                }
+        }
+    }
+    r.pass = step <= 0.05 && curve <= 0.01 && finite;
+    r.measured = "defaults: largest step " + fmt (step, 4) + " samples; any setting: largest slope change " + fmt (curve, 5)
+                 + " samples/sample; " + (finite ? "no NaN" : "NaN found");
     return r;
 }
 } // namespace sph::measure

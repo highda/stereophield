@@ -4,6 +4,7 @@
 #include "dsp/Stft.h"
 
 #include <algorithm>
+#include <type_traits>
 #include <cmath>
 
 namespace sph
@@ -11,9 +12,9 @@ namespace sph
 Core::Core() = default;
 Core::~Core() = default;
 
-int Core::latencyFor (Engine e, double sampleRate) noexcept
+int Core::latencyFor (Engine e, double sampleRate, LatencyMode mode) noexcept
 {
-    return e == Engine::Full ? Stft::fftSizeForRate (sampleRate) : 0;
+    return e == Engine::Full || mode == LatencyMode::AlwaysFull ? Stft::fftSizeForRate (sampleRate) : 0;
 }
 
 void Core::prepare (const ProcessSpec& s, const Params& p)
@@ -29,20 +30,42 @@ void Core::prepare (const ProcessSpec& s, const Params& p)
     detector.prepare (fs);
     analyser.prepare (fs);
     panFader.prepare (fs);
-    spreadGen.prepare (spec);
-    haasGen.prepare (spec);
-    modGen.prepare (spec);
-    velvetGen.prepare (spec);
-    dblGen.prepare (spec);
+    const int switchFade = std::max (1, (int) std::lround (0.030 * fs));
+    fadeTrack = (float) std::exp (-1.0 / (0.002 * fs));
+    auto preparePair = [&] (auto& pair)
+    {
+        for (auto& g : pair.inst)
+        {
+            g.prepare (spec);
+            g.externalSwitching = true;
+        }
+        pair.cur = 0;
+        pair.fadeLen = switchFade;
+        pair.fadePos = switchFade;
+    };
+    preparePair (spreads);
+    preparePair (haases);
+    preparePair (mods);
+    preparePair (velvets);
+    preparePair (doubles);
+    const int hist = (int) std::lround (0.150 * fs);
+    for (auto& h : history)
+        h.assign ((size_t) hist, 0.0f);
+    historyPos = 0;
+    preIn.assign ((size_t) hist, 0.0f);
     roomGen.prepare (spec);
     expanderMix.reset (fs, 0.030);
+    fullMix.reset (fs, 0.030);
+    fluxMarkers.assign ((size_t) (2 * fftSize), 0.0f);
+    ratioRing.assign ((size_t) fftSize, 0.0f);
+    fluxHold = std::exp (-1.0 / (TransientDetector::holdSeconds * fs));
     for (auto& slot : slots)
         slot.amount.reset (fs, 0.020);
     side.prepare (spec);
     out.prepare (spec);
     meters.prepare (fs);
 
-    for (auto* v : { &m, &sIn, &mD, &sInD, &e, &tonal, &noise, &tonalNoise, &panSide, &panPost, &cohSide, &sExp, &sBus, &dBus, &sTmp, &mTmp, &sSyn, &mOut, &outTmpL, &outTmpR })
+    for (auto* v : { &m, &sIn, &mD, &sInD, &e, &tonal, &noise, &tonalNoise, &panSide, &panPost, &cohSide, &sExp, &ratio, &preS, &preM, &sOld, &mOld, &fullW, &sBus, &dBus, &sTmp, &mTmp, &sSyn, &mOut, &outTmpL, &outTmpR })
         v->assign ((size_t) spec.maxBlockSize, 0.0f);
 
     engineFadeLen = std::max (1, (int) std::lround (0.020 * fs));
@@ -60,7 +83,10 @@ void Core::reset()
 void Core::applySnap (const Params& p)
 {
     engine = p.engine;
-    const int newLatency = latencyFor (engine, spec.sampleRate);
+    latencyMode = p.latencyMode;
+    fullMix.setCurrentAndTargetValue (engine == Engine::Full ? 1.0f : 0.0f);
+    fullWarmup = 0;
+    const int newLatency = latencyFor (engine, spec.sampleRate, latencyMode);
     if (newLatency != latency)
         latencyChanged.store (true);
     latency = newLatency;
@@ -69,11 +95,21 @@ void Core::applySnap (const Params& p)
 
     panMode = p.panMode;
     panFader.snap();
-    spreadGen.setParams (p, true);
-    haasGen.setParams (p, true);
-    modGen.setParams (p, true);
-    velvetGen.setParams (p, true);
-    dblGen.setParams (p, true);
+    for (auto& g : spreads.inst)
+        g.setParams (p, true);
+    spreads.fadePos = spreads.fadeLen;
+    for (auto& g : haases.inst)
+        g.setParams (p, true);
+    haases.fadePos = haases.fadeLen;
+    for (auto& g : mods.inst)
+        g.setParams (p, true);
+    mods.fadePos = mods.fadeLen;
+    for (auto& g : velvets.inst)
+        g.setParams (p, true);
+    velvets.fadePos = velvets.fadeLen;
+    for (auto& g : doubles.inst)
+        g.setParams (p, true);
+    doubles.fadePos = doubles.fadeLen;
     roomGen.setParams (p, true);
     expanderMix.setCurrentAndTargetValue (p.imgAmount != 1.0f || p.imgDiffuse != 1.0f ? 1.0f : 0.0f);
     side.setParams (p, true);
@@ -94,13 +130,25 @@ void Core::resetAll()
     detectorSleep.reset();
     analyser.resetAll();
     analyserSleep.reset();
-    spreadGen.reset();
-    haasGen.reset();
-    modGen.reset();
-    velvetGen.reset();
-    dblGen.reset();
+    for (auto& g : spreads.inst)
+        g.reset();
+    for (auto& g : haases.inst)
+        g.reset();
+    for (auto& g : mods.inst)
+        g.reset();
+    for (auto& g : velvets.inst)
+        g.reset();
+    for (auto& g : doubles.inst)
+        g.reset();
     roomGen.reset();
     expanderMix.setCurrentAndTargetValue (expanderMix.getTargetValue());
+    std::fill (fluxMarkers.begin(), fluxMarkers.end(), 0.0f);
+    for (auto& h : history)
+        std::fill (h.begin(), h.end(), 0.0f);
+    historyPos = 0;
+    std::fill (ratioRing.begin(), ratioRing.end(), 0.0f);
+    inputTime = 0;
+    fluxEnvelope = 0.0;
     for (auto& slot : slots)
     {
         slot.amount.setCurrentAndTargetValue (slot.amount.getTargetValue());
@@ -109,6 +157,66 @@ void Core::resetAll()
     side.reset();
     sideSleep.reset();
     out.reset();
+}
+
+bool Core::switching (GeneratorId g) const noexcept
+{
+    switch (g)
+    {
+        case genSpread: return spreads.fading();
+        case genDelay: return haases.fading();
+        case genMod: return mods.fading();
+        case genVelvet: return velvets.fading();
+        case genDouble: return doubles.fading();
+        default: return false;
+    }
+}
+
+template <typename G>
+void Core::preRoll (G& g, Source src)
+{
+    // The last 150 ms of the bus the instance will read, oldest first; its
+    // output is discarded. Every generator's tail is shorter than that, so
+    // its state then matches one that had been running all along.
+    const int len = (int) preIn.size();
+    const int b = engine == Engine::Full ? (int) src : 0;
+    const auto& h = history[(size_t) b];
+    for (int i = 0; i < len; ++i)
+        preIn[(size_t) i] = h[(size_t) ((historyPos + i) % len)];
+    for (int done = 0; done < len; done += spec.maxBlockSize)
+    {
+        const int m = std::min (spec.maxBlockSize, len - done);
+        const float* in = preIn.data() + done;
+        const Buses bus { in, in, in, in };
+        if constexpr (std::is_same_v<G, Spread>)
+            g.process (bus, preS.data(), m);
+        else
+            g.process (bus, preS.data(), preM.data(), m);
+    }
+}
+
+template <typename G>
+void Core::switchIfSpectral (GenPair<G>& pair, GeneratorId g)
+{
+    // The bus of a spectral source changes with the engine.
+    if (isSpectral (pair.now().active().source) && ! slots[(size_t) g].sleep.isAsleep() && ! pair.fading())
+        startSwitch (pair);
+}
+
+template <typename G>
+void Core::startSwitch (GenPair<G>& pair)
+{
+    auto& next = pair.old();
+    next.setParams (params, true);
+    preRoll (next, next.active().source);
+    if constexpr (std::is_same_v<G, Mod>)
+        next.copyPhaseFrom (pair.now());
+    if constexpr (std::is_same_v<G, DoubleTracker>)
+        if (next.active().seed == pair.now().active().seed)
+            next.copyDriftFrom (pair.now());
+    pair.cur = 1 - pair.cur;
+    pair.fadePos = 0;
+    pair.pn = pair.po = pair.pc = 0.0f;
 }
 
 int Core::samplesUntilEngineSwitch() const noexcept
@@ -122,11 +230,16 @@ void Core::process (const float* inL, const float* inR, float* outL, float* outR
         applySnap (params);
     else
     {
-        spreadGen.setParams (params, false);
-        haasGen.setParams (params, false);
-        modGen.setParams (params, false);
-        velvetGen.setParams (params, false);
-        dblGen.setParams (params, false);
+        for (auto& g : spreads.inst)
+            g.setParams (params, false);
+        for (auto& g : haases.inst)
+            g.setParams (params, false);
+        for (auto& g : mods.inst)
+            g.setParams (params, false);
+        for (auto& g : velvets.inst)
+            g.setParams (params, false);
+        for (auto& g : doubles.inst)
+            g.setParams (params, false);
         roomGen.setParams (params, false);
         expanderMix.setTargetValue (params.imgAmount != 1.0f || params.imgDiffuse != 1.0f ? 1.0f : 0.0f);
         side.setParams (params, false);
@@ -135,7 +248,27 @@ void Core::process (const float* inL, const float* inR, float* outL, float* outR
                                                params.panAmount, params.cohAmount, params.dblAmount, params.roomAmount };
         for (int g = 0; g < numGenerators; ++g)
             slots[(size_t) g].amount.setTargetValue (amounts[g]);
-        if (params.engine != engine)
+        if (params.latencyMode != latencyMode)
+            engineSwitching = true; // the latency changes: full fade and reset
+        else if (params.engine != engine && latencyMode == LatencyMode::AlwaysFull)
+        {
+            // Same latency: no global fade. The Full-only parts fade, and
+            // generators reading a spectral bus switch instance.
+            engine = params.engine;
+            if (engine == Engine::Full)
+                fullWarmup = latency; // the analysis needs one frame to become valid
+            else
+            {
+                fullWarmup = 0;
+                fullMix.setTargetValue (0.0f);
+            }
+            switchIfSpectral (spreads, genSpread);
+            switchIfSpectral (haases, genDelay);
+            switchIfSpectral (mods, genMod);
+            switchIfSpectral (velvets, genVelvet);
+            switchIfSpectral (doubles, genDouble);
+        }
+        else if (params.engine != engine)
             engineSwitching = true;
         if (params.panMode != panMode)
             panFader.request();
@@ -149,10 +282,13 @@ void Core::process (const float* inL, const float* inR, float* outL, float* outR
             // Faded out: switch, reset every module and the alignment delay,
             // then fade back in.
             engineSwitching = false;
-            if (params.engine != engine)
+            if (params.engine != engine || params.latencyMode != latencyMode)
             {
                 engine = params.engine;
-                latency = latencyFor (engine, spec.sampleRate);
+                latencyMode = params.latencyMode;
+                latency = latencyFor (engine, spec.sampleRate, latencyMode);
+                fullMix.setCurrentAndTargetValue (engine == Engine::Full ? 1.0f : 0.0f);
+                fullWarmup = 0;
                 resetAll();
                 latencyChanged.store (true);
             }
@@ -168,6 +304,16 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
 {
     const double fs = spec.sampleRate;
     const bool full = engine == Engine::Full;
+    if (fullWarmup > 0 && (fullWarmup -= n) <= 0)
+    {
+        fullWarmup = 0;
+        fullMix.setTargetValue (1.0f);
+    }
+    // The Full-only parts run while they are audible or fading; fullW holds
+    // their per-sample weight.
+    const bool fullParts = full || fullMix.getCurrentValue() > 0.0f || fullMix.isSmoothing();
+    for (int i = 0; i < n; ++i)
+        fullW[(size_t) i] = fullMix.getNextValue();
 
     // 1. Input split.
     if (inR != nullptr)
@@ -194,6 +340,24 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     const float peakM = PeakScanner::peak (m.data(), n);
     const float peakMd = PeakScanner::peak (mD.data(), n);
 
+    // 3a. Structural changes: an awake generator switches to a second,
+    // pre-rolled instance and crossfades; an asleep one just takes the change.
+    auto structural = [&] (auto& pair, GeneratorId g)
+    {
+        auto& now = pair.now();
+        if (pair.fading() || now.pending() == now.active())
+            return;
+        if (slots[(size_t) g].sleep.isAsleep())
+            now.setParams (params, true);
+        else
+            startSwitch (pair);
+    };
+    structural (spreads, genSpread);
+    structural (haases, genDelay);
+    structural (mods, genMod);
+    structural (velvets, genVelvet);
+    structural (doubles, genDouble);
+
     // 3. Sleep decisions for the generators.
     const bool widthZero = side.widthIsZeroAndSettled();
     bool allZeroGain = true;
@@ -210,14 +374,18 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         slot.awake = slot.sleep.update (zeroGain, pk, n, required, forceAwake);
         return slot.sleep.justFellAsleep();
     };
-    if (decide (genSpread, spreadGen.active().source, spreadGen.pending().source, spreadGen.tailSamples(), spreadGen.isSettled()))
-        spreadGen.reset();
-    if (decide (genDelay, haasGen.active().source, haasGen.pending().source, haasGen.tailSamples(), haasGen.isSettled()))
-        haasGen.reset();
-    if (decide (genMod, modGen.active().source, modGen.pending().source, modGen.tailSamples(), modGen.isSettled()))
-        modGen.reset();
-    if (decide (genVelvet, velvetGen.active().source, velvetGen.pending().source, velvetGen.tailSamples(), velvetGen.isSettled()))
-        velvetGen.reset();
+    if (decide (genSpread, spreads.now().active().source, spreads.now().pending().source, spreads.now().tailSamples(), spreads.now().isSettled()))
+        for (auto& g : spreads.inst)
+        g.reset();
+    if (decide (genDelay, haases.now().active().source, haases.now().pending().source, haases.now().tailSamples(), haases.now().isSettled()))
+        for (auto& g : haases.inst)
+        g.reset();
+    if (decide (genMod, mods.now().active().source, mods.now().pending().source, mods.now().tailSamples(), mods.now().isSettled()))
+        for (auto& g : mods.inst)
+        g.reset();
+    if (decide (genVelvet, velvets.now().active().source, velvets.now().pending().source, velvets.now().tailSamples(), velvets.now().isSettled()))
+        for (auto& g : velvets.inst)
+        g.reset();
     // Pan map: Full engine only, and judged on the undelayed mid like the
     // analysis it is part of. A pending mode change is applied between blocks.
     if (panFader.readyToApply())
@@ -228,35 +396,36 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     }
     {
         auto& slot = slots[genPan];
-        const bool zeroGain = ! full || widthZero
+        const bool zeroGain = ! fullParts || widthZero
                               || (panFader.isSettled() && ! slot.amount.isSmoothing() && slot.amount.getTargetValue() == 0.0f);
         allZeroGain = allZeroGain && zeroGain;
         slot.awake = slot.sleep.update (zeroGain, peakM, n, fftSize + (int64_t) std::lround (0.5 * fs),
-                                        forceAwake && full);
+                                        forceAwake && fullParts);
         if (slot.sleep.justFellAsleep())
             analyser.resetPanMap();
     }
     // Coherence designer: Full engine only, judged like the Pan map.
     {
         auto& slot = slots[genCoherence];
-        const bool zeroGain = ! full || widthZero || (! slot.amount.isSmoothing() && slot.amount.getTargetValue() == 0.0f);
+        const bool zeroGain = ! fullParts || widthZero || (! slot.amount.isSmoothing() && slot.amount.getTargetValue() == 0.0f);
         allZeroGain = allZeroGain && zeroGain;
         slot.awake = slot.sleep.update (zeroGain, peakM, n, fftSize + (int64_t) std::lround (0.5 * fs),
-                                        forceAwake && full);
+                                        forceAwake && fullParts);
         if (slot.sleep.justFellAsleep())
             analyser.resetCoherence();
     }
-    if (decide (genDouble, dblGen.active().source, dblGen.pending().source, dblGen.tailSamples(), dblGen.isSettled()))
-        dblGen.reset();
+    if (decide (genDouble, doubles.now().active().source, doubles.now().pending().source, doubles.now().tailSamples(), doubles.now().isSettled()))
+        for (auto& g : doubles.inst)
+        g.reset();
     if (decide (genRoom, roomGen.activeSource(), roomGen.activeSource(), roomGen.tailSamples(), roomGen.isSettled()))
         roomGen.reset();
 
     // 4. Analysis and buses. In the Light engine every bus is the mid.
     Buses buses { mD.data(), mD.data(), mD.data(), mD.data() };
     expanderOn = false;
-    if (! full)
+    if (! fullParts)
         expanderMix.skip (n);
-    if (full)
+    if (fullParts)
     {
         bool needTonal = false, needNoise = false;
         auto need = [&] (GeneratorId g, Source a, Source b)
@@ -266,11 +435,22 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
             needTonal = needTonal || usesTonal (a) || usesTonal (b);
             needNoise = needNoise || usesNoise (a) || usesNoise (b);
         };
-        need (genSpread, spreadGen.active().source, spreadGen.pending().source);
-        need (genDelay, haasGen.active().source, haasGen.pending().source);
-        need (genMod, modGen.active().source, modGen.pending().source);
-        need (genVelvet, velvetGen.active().source, velvetGen.pending().source);
-        need (genDouble, dblGen.active().source, dblGen.pending().source);
+        need (genSpread, spreads.now().active().source, spreads.now().pending().source);
+        need (genDelay, haases.now().active().source, haases.now().pending().source);
+        need (genMod, mods.now().active().source, mods.now().pending().source);
+        need (genVelvet, velvets.now().active().source, velvets.now().pending().source);
+        need (genDouble, doubles.now().active().source, doubles.now().pending().source);
+        // While crossfading, the outgoing instance still reads its bus.
+        if (spreads.fading())
+            need (genSpread, spreads.old().active().source, spreads.old().active().source);
+        if (haases.fading())
+            need (genDelay, haases.old().active().source, haases.old().active().source);
+        if (mods.fading())
+            need (genMod, mods.old().active().source, mods.old().active().source);
+        if (velvets.fading())
+            need (genVelvet, velvets.old().active().source, velvets.old().active().source);
+        if (doubles.fading())
+            need (genDouble, doubles.old().active().source, doubles.old().active().source);
         need (genRoom, roomGen.activeSource(), roomGen.activeSource());
 
         // Image expander: stereo input only, while its settings are not neutral.
@@ -281,7 +461,8 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         // has been silent for N samples plus 0.5 s.
         const bool panAwake = slots[genPan].awake;
         const bool cohAwake = slots[genCoherence].awake;
-        const bool wanted = needTonal || needNoise || panAwake || cohAwake || expanderOn;
+        const bool fluxWanted = params.transientMode == TransientMode::SpectralFlux && ! side.duckIsZeroAndSettled() && ! allZeroGain;
+        const bool wanted = needTonal || needNoise || panAwake || cohAwake || expanderOn || fluxWanted;
         const bool stages = analyserSleep.update (! wanted, std::max (peakM, peakS), n,
                                                   fftSize + (int64_t) std::lround (0.5 * fs), forceAwake);
         if (analyserSleep.justFellAsleep())
@@ -294,13 +475,14 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         analyser.coherence().setParams (params);
         analyser.expander().setParams (params);
         const Analysis::Needs needs { stages, stages && needTonal, stages && needNoise, false, stages && panAwake,
-                                      stages && cohAwake, stages && expanderOn };
+                                      stages && cohAwake, stages && expanderOn,
+                                      stages && params.transientMode == TransientMode::SpectralFlux };
         analyser.process (m.data(), n, needs, tonal.data(), noise.data(), nullptr, panSide.data(), cohSide.data(),
                           expanderOn ? sIn.data() : nullptr, sExp.data());
         if (expanderOn)
             for (int i = 0; i < n; ++i)
             {
-                const float w = expanderMix.getNextValue();
+                const float w = expanderMix.getNextValue() * fullW[(size_t) i];
                 sInD[(size_t) i] = (1.0f - w) * sInD[(size_t) i] + w * sExp[(size_t) i];
             }
         else
@@ -308,21 +490,72 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         if (needTonal && needNoise)
             for (int i = 0; i < n; ++i)
                 tonalNoise[(size_t) i] = tonal[(size_t) i] + noise[(size_t) i];
-        buses = { mD.data(), tonal.data(), noise.data(), tonalNoise.data() };
+        if (full)
+            buses = { mD.data(), tonal.data(), noise.data(), tonalNoise.data() };
+    }
+
+    // Bus history for pre-rolling switched instances.
+    {
+        const int len = (int) history[0].size();
+        const float* src[4] = { buses.full, buses.tonal, buses.noise, buses.tonalNoise };
+        for (int i = 0; i < n; ++i)
+        {
+            const int at = (historyPos + i) % len;
+            for (int b = 0; b < 4; ++b)
+                history[(size_t) b][(size_t) at] = src[b][i];
+        }
+        historyPos = (historyPos + n) % len;
     }
 
     // 5. Transient detector.
     const bool detAwake = detectorSleep.update (side.duckIsZeroAndSettled() || allZeroGain, peakM, n,
                                                 latency + (int64_t) std::lround (0.3 * fs), forceAwake);
     if (detAwake)
-        detector.process (m.data(), e.data(), n);
+        detector.process (m.data(), e.data(), n, ratio.data());
     else
     {
         if (detectorSleep.justFellAsleep())
             detector.reset();
         std::fill (e.begin(), e.begin() + n, 0.0f);
+        std::fill (ratio.begin(), ratio.begin() + n, 0.0f);
     }
-    if (full)
+    const int ringN = (int) ratioRing.size(), markN = (int) fluxMarkers.size();
+    for (int i = 0; i < n; ++i)
+        ratioRing[(size_t) ((inputTime + i) % ringN)] = ratio[(size_t) i];
+    if (full && params.transientMode == TransientMode::SpectralFlux)
+    {
+        // Each onset of the flux detector is placed at the sample of the
+        // largest detector ratio in the newest three hops (an onset raises the
+        // flux for two or three frames as it moves into the window, so every
+        // detection of it finds the same sample), and starts the duck 2 ms
+        // before that sample reaches the output.
+        const int hop = analyser.hopSize(), lead = (int) std::lround (0.002 * fs);
+        for (int o = 0; o < analyser.numOnsets(); ++o)
+        {
+            const auto& on = analyser.onset (o);
+            const int64_t end = inputTime + on.index;
+            int64_t at = end;
+            float best = -1.0f;
+            for (int64_t j = end - 3 * hop + 1; j <= end; ++j)
+                if (j >= 0 && ratioRing[(size_t) (j % ringN)] > best)
+                {
+                    best = ratioRing[(size_t) (j % ringN)];
+                    at = j;
+                }
+            auto& mk = fluxMarkers[(size_t) ((at + latency - lead) % markN)];
+            mk = std::max (mk, on.strength);
+        }
+        for (int i = 0; i < n; ++i)
+        {
+            auto& mk = fluxMarkers[(size_t) ((inputTime + i) % markN)];
+            fluxEnvelope = std::max ((double) mk, fluxEnvelope * fluxHold);
+            if (fluxEnvelope < 1e-30)
+                fluxEnvelope = 0.0;
+            mk = 0.0f;
+            e[(size_t) i] = (float) fluxEnvelope;
+        }
+    }
+    else if (latency > 0)
     {
         const int eLag = latency - (int) std::lround (0.002 * fs);
         for (int i = 0; i < n; ++i)
@@ -330,6 +563,17 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
             eDelay.push (e[(size_t) i]);
             e[(size_t) i] = eDelay.readInt (eLag);
         }
+    }
+    inputTime += n;
+    {
+        float sum = 0.0f, mx = 0.0f;
+        for (int i = 0; i < n; ++i)
+        {
+            sum += e[(size_t) i];
+            mx = std::max (mx, e[(size_t) i]);
+        }
+        envMean = sum / (float) n;
+        envMax = mx;
     }
 
     // 6. Generators, summed onto the side and mid-difference buses.
@@ -346,53 +590,61 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         }
     };
     awakeMask = 0;
-    if (slots[genSpread].awake)
+    // Runs a generator pair: the current instance, and while crossfading the
+    // outgoing one, blended with equal power.
+    auto runPair = [&] (auto& pair, GeneratorId g, bool hasMid, auto&& proc)
     {
-        spreadGen.process (buses, sTmp.data(), n);
-        accumulate (slots[genSpread], sTmp.data(), nullptr);
-        awakeMask |= 1u << genSpread;
-    }
-    else
-        slots[genSpread].amount.skip (n);
-    if (slots[genDelay].awake)
+        auto& slot = slots[(size_t) g];
+        if (! slot.awake)
+        {
+            slot.amount.skip (n);
+            pair.fadePos = pair.fadeLen;
+            return;
+        }
+        proc (pair.now(), sTmp.data(), mTmp.data());
+        if (pair.fading())
+        {
+            // Linear crossfade with a power correction tracked per sample
+            // (2 ms one-poles of both powers and their cross term): the mix's
+            // power is steered to the linear interpolation of the two powers,
+            // which is equal-power for uncorrelated outputs, equal-gain for
+            // identical ones, and fills the short notches of outputs that are
+            // delayed copies of each other.
+            proc (pair.old(), sOld.data(), mOld.data());
+            const float k = fadeTrack;
+            for (int i = 0; i < n; ++i)
+            {
+                const float x = std::min (1.0f, (float) (pair.fadePos + i) / (float) pair.fadeLen);
+                const float a = sTmp[(size_t) i], b = sOld[(size_t) i];
+                pair.pn = k * pair.pn + (1.0f - k) * a * a;
+                pair.po = k * pair.po + (1.0f - k) * b * b;
+                pair.pc = k * pair.pc + (1.0f - k) * a * b;
+                const float mixP = x * x * pair.pn + (1 - x) * (1 - x) * pair.po + 2 * x * (1 - x) * pair.pc;
+                const float wanted = x * pair.pn + (1 - x) * pair.po;
+                const float g = mixP > 1e-20f ? std::clamp (std::sqrt (wanted / mixP), 0.25f, 4.0f) : 1.0f;
+                sTmp[(size_t) i] = g * (x * a + (1.0f - x) * b);
+                mTmp[(size_t) i] = g * (x * mTmp[(size_t) i] + (1.0f - x) * mOld[(size_t) i]);
+            }
+            pair.fadePos = std::min (pair.fadeLen, pair.fadePos + n);
+        }
+        accumulate (slot, sTmp.data(), hasMid ? mTmp.data() : nullptr);
+        awakeMask |= 1u << g;
+    };
+    runPair (spreads, genSpread, false, [&] (Spread& gen, float* s, float* md)
     {
-        haasGen.process (buses, sTmp.data(), mTmp.data(), n);
-        accumulate (slots[genDelay], sTmp.data(), mTmp.data());
-        awakeMask |= 1u << genDelay;
-    }
-    else
-        slots[genDelay].amount.skip (n);
-    if (slots[genMod].awake)
-    {
-        modGen.process (buses, sTmp.data(), mTmp.data(), n);
-        accumulate (slots[genMod], sTmp.data(), mTmp.data());
-        awakeMask |= 1u << genMod;
-    }
-    else
-    {
-        modGen.advanceWhileAsleep (n);
-        slots[genMod].amount.skip (n);
-    }
-    if (slots[genVelvet].awake)
-    {
-        velvetGen.process (buses, sTmp.data(), mTmp.data(), n);
-        accumulate (slots[genVelvet], sTmp.data(), mTmp.data());
-        awakeMask |= 1u << genVelvet;
-    }
-    else
-        slots[genVelvet].amount.skip (n);
-
-    if (slots[genDouble].awake)
-    {
-        dblGen.process (buses, sTmp.data(), mTmp.data(), n);
-        accumulate (slots[genDouble], sTmp.data(), mTmp.data());
-        awakeMask |= 1u << genDouble;
-    }
-    else
-    {
-        dblGen.advanceWhileAsleep (n);
-        slots[genDouble].amount.skip (n);
-    }
+        gen.process (buses, s, n);
+        std::fill (md, md + n, 0.0f);
+    });
+    runPair (haases, genDelay, true, [&] (HaasDelay& gen, float* s, float* md) { gen.process (buses, s, md, n); });
+    runPair (mods, genMod, true, [&] (Mod& gen, float* s, float* md) { gen.process (buses, s, md, n); });
+    if (! slots[genMod].awake)
+        for (auto& g : mods.inst)
+            g.advanceWhileAsleep (n);
+    runPair (velvets, genVelvet, true, [&] (Velvet& gen, float* s, float* md) { gen.process (buses, s, md, n); });
+    runPair (doubles, genDouble, true, [&] (DoubleTracker& gen, float* s, float* md) { gen.process (buses, s, md, n); });
+    if (! slots[genDouble].awake)
+        for (auto& g : doubles.inst)
+            g.advanceWhileAsleep (n);
     if (slots[genRoom].awake)
     {
         roomGen.process (buses, sTmp.data(), mTmp.data(), n);
@@ -403,6 +655,8 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         slots[genRoom].amount.skip (n);
     if (slots[genCoherence].awake)
     {
+        for (int i = 0; i < n; ++i)
+            cohSide[(size_t) i] *= fullW[(size_t) i];
         accumulate (slots[genCoherence], cohSide.data(), nullptr);
         awakeMask |= 1u << genCoherence;
     }
@@ -416,7 +670,7 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     {
         auto& slot = slots[genPan];
         for (int i = 0; i < n; ++i)
-            panPost[(size_t) i] = panSide[(size_t) i] * panFader.next() * slot.amount.getNextValue();
+            panPost[(size_t) i] = panSide[(size_t) i] * panFader.next() * slot.amount.getNextValue() * fullW[(size_t) i];
         awakeMask |= 1u << genPan;
     }
     else
@@ -468,11 +722,11 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         if (slots[(size_t) g].awake)
             longest = std::max (longest, t + (full && isSpectral (src) ? fftSize : 0));
     };
-    tailOf (genSpread, spreadGen.active().source, spreadGen.tailSamples());
-    tailOf (genDelay, haasGen.active().source, haasGen.tailSamples());
-    tailOf (genMod, modGen.active().source, modGen.tailSamples());
-    tailOf (genVelvet, velvetGen.active().source, velvetGen.tailSamples());
-    tailOf (genDouble, dblGen.active().source, dblGen.tailSamples());
+    tailOf (genSpread, spreads.now().active().source, spreads.now().tailSamples());
+    tailOf (genDelay, haases.now().active().source, haases.now().tailSamples());
+    tailOf (genMod, mods.now().active().source, mods.now().tailSamples());
+    tailOf (genVelvet, velvets.now().active().source, velvets.now().tailSamples());
+    tailOf (genDouble, doubles.now().active().source, doubles.now().tailSamples());
     tailOf (genRoom, roomGen.activeSource(), roomGen.tailSamples());
     tailOf (genPan, Source::Tonal, fftSize);
     tailOf (genCoherence, Source::Tonal, fftSize + (int) std::lround (0.021 * fs));

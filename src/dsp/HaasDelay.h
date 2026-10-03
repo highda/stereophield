@@ -32,6 +32,10 @@ public:
     const Structure& pending() const noexcept { return wanted; }
     bool isSettled() const noexcept { return fader.isSettled(); }
 
+    // When set, structural changes are left to the owner (which crossfades
+    // between two instances) instead of the internal fade.
+    bool externalSwitching = false;
+
     // Test hook: current smoothed delay in samples.
     double currentDelaySamples() const noexcept { return timeSmoother.current(); }
 

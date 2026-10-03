@@ -100,7 +100,7 @@ void Velvet::setParams (const Params& p, bool snap)
         rebuild();
         reset();
     }
-    else if (! (wanted == current))
+    else if (! (wanted == current) && ! externalSwitching)
         fader.request();
 }
 

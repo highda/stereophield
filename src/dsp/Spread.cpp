@@ -48,7 +48,7 @@ void Spread::setParams (const Params& p, bool snap)
         fader.snap();
         reset();
     }
-    else if (! (wanted == current))
+    else if (! (wanted == current) && ! externalSwitching)
         fader.request();
 }
 
