@@ -14,6 +14,7 @@ void Analysis::prepare (double sampleRate)
     magScale = 2.0 / stft.windowSum();
     split.prepare (k);
     ambience.prepare (k, fs, stft.hopSize());
+    pans.prepare (fs, n, stft.hopSize());
     spec.assign ((size_t) k, {});
     bus.assign ((size_t) k, {});
     for (auto* v : { &mag, &mt, &mx, &mn, &ma })
@@ -31,6 +32,7 @@ void Analysis::resetAll()
 {
     stft.reset();
     reset();
+    pans.reset();
     frames = 0;
 }
 
@@ -57,10 +59,15 @@ void Analysis::analyseFrame (const Needs& needs) noexcept
         synth (chNoise, mn);
     if (needs.transient)
         synth (chTransient, mx);
+    if (needs.pan)
+    {
+        pans.processFrame (spec.data(), mag.data(), mt.data(), mn.data(), bus.data());
+        stft.synthesize (chPan, bus.data());
+    }
 }
 
 void Analysis::process (const float* m, int numSamples, const Needs& needs,
-                        float* tonal, float* noise, float* transient) noexcept
+                        float* tonal, float* noise, float* transient, float* pan) noexcept
 {
     for (int i = 0; i < numSamples; ++i)
     {
@@ -70,7 +77,7 @@ void Analysis::process (const float* m, int numSamples, const Needs& needs,
         // Every channel is popped every sample so no stale slot survives.
         const float t = stft.popOutput (chTonal);
         const float nz = stft.popOutput (chNoise);
-        stft.popOutput (chPan);
+        const float pn = stft.popOutput (chPan);
         const float x = stft.popOutput (chTransient);
         if (tonal != nullptr)
             tonal[i] = t;
@@ -78,6 +85,8 @@ void Analysis::process (const float* m, int numSamples, const Needs& needs,
             noise[i] = nz;
         if (transient != nullptr)
             transient[i] = x;
+        if (pan != nullptr)
+            pan[i] = pn;
     }
 }
 } // namespace sph

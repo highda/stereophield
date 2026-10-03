@@ -16,6 +16,8 @@ Written by `sph_measure --all` on 2026-10-03. Release build, 48 kHz and block 51
 | T10 | Full analysis on mix: tonal + transient + noise - input delayed by Lat <= -90 dB | -139.0 dB | pass |
 | T11 | ambience 0. sine(440): tonal within 1 dB, others <= -20 dB. clicks: transient >= 10 dB above others. noise: noise >= 3 dB above others | sine T/N/X -0.0/-48.5/-57.2 dB; clicks -600.0/-600.0/-0.0 dB; noise -11.4/-4.9/-11.6 dB | pass |
 | T12 | decayTone, ambience 100 %, decay 1 s: magnitude-weighted mean of ma <= 0.1 over 0.3-1.0 s and >= 0.3 over 1.1-1.8 s | steady 0.002, decaying 0.686 | pass |
+| T13 | twoSource, Groups, 1.5-2.5 s: exactly 2 groups; >= 12 of 16 partials in the right group; opposite pans; each source >= 6 dB louder on its own side | groups 2..2 over 94 frames; 15/16 partials correct; pans A -0.50, B 1.00; L-R A -6.1 dB, B 15.0 dB | pass |
+| T14 | melody, same setup as T13: all four notes receive the same pan | pans -0.50, -0.50, -0.50, -0.50 | pass |
 | T15 | toneClick, Spread only, duck 100 % vs 0: side energy -1..+5 ms around the click >= 20 dB lower (Full); +0.5..+5 ms >= 10 dB lower (Light) | Full 33.0 dB lower, Light 37.5 dB lower | pass |
 | T16 | All generators at 100 %, width 200 %, guard On, noise: correlation of every 100 ms window after 500 ms >= -0.1 | minimum -0.071 | pass |
 | T27 | Bypass on, stereo noise: output - input delayed by Lat <= -120 dB, both engines | Light -149.5 dB (Lat 0), Full -149.5 dB (Lat 2048) | pass |

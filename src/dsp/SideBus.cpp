@@ -98,7 +98,25 @@ void SideBus::advanceWhileAsleep (int numSamples) noexcept
         sv->skip (numSamples);
 }
 
-void SideBus::process (const float* sBus, const float* dBus, const float* e, const float* mD,
+void SideBus::spectralWeights (float* w, int numBins, int fftSize) const noexcept
+{
+    const double hpF = hpHz.getCurrentValue(), hpW = hpMix.getCurrentValue();
+    const double f1 = xLo.getCurrentValue(), f2 = xHi.getCurrentValue();
+    const double gL = bandLow.getCurrentValue(), gM = bandMid.getCurrentValue(), gH = bandHigh.getCurrentValue();
+    const double sw = splitMix.getCurrentValue();
+    // |LP_LR4|  = 1 / (1 + x^4) and |HP_LR4| = x^4 / (1 + x^4); they sum to 1.
+    auto hp = [] (double f, double fc) { const double x = f / fc, x4 = x * x * x * x; return x4 / (1.0 + x4); };
+    for (int b = 0; b < numBins; ++b)
+    {
+        const double f = (double) b * fs / fftSize;
+        const double bass = (1.0 - hpW) + hpW * hp (f, hpF);
+        const double h1 = hp (f, f1), h2 = hp (f, f2);
+        const double split = gL * (1.0 - h1) + gM * h1 * (1.0 - h2) + gH * h1 * h2;
+        w[b] = (float) (bass * ((1.0 - sw) * gL + sw * split));
+    }
+}
+
+void SideBus::process (const float* sBus, const float* sPost, const float* dBus, const float* e, const float* mD,
                        float* sSyn, float* mOut, int numSamples) noexcept
 {
     int done = 0;
@@ -151,6 +169,8 @@ void SideBus::process (const float* sBus, const float* dBus, const float* e, con
             }
             else
                 s *= gL;
+            if (sPost != nullptr)
+                s += sPost[i];
 
             // Step 3: transient duck.
             const float dk = duck.getNextValue();

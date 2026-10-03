@@ -2,6 +2,7 @@
 
 #include "dsp/AmbienceSplit.h"
 #include "dsp/ComponentSplit.h"
+#include "dsp/PanMap.h"
 #include "dsp/Stft.h"
 
 #include <complex>
@@ -25,6 +26,7 @@ public:
         bool tonal = true;
         bool noise = true;
         bool transient = false;
+        bool pan = false;
     };
 
     void prepare (double sampleRate);
@@ -37,9 +39,13 @@ public:
         decay = roomDecaySeconds;
     }
 
+    PanMap& panMap() noexcept { return pans; }
+    const PanMap& panMap() const noexcept { return pans; }
+    void resetPanMap() { pans.reset(); }
+
     // Outputs may be null when not needed.
     void process (const float* m, int numSamples, const Needs& needs,
-                  float* tonal, float* noise, float* transient) noexcept;
+                  float* tonal, float* noise, float* transient, float* pan = nullptr) noexcept;
 
     int fftSize() const noexcept { return stft.fftSize(); }
     int hopSize() const noexcept { return stft.hopSize(); }
@@ -63,6 +69,7 @@ private:
     Stft stft;
     ComponentSplit split;
     AmbienceSplit ambience;
+    PanMap pans;
     std::vector<std::complex<float>> spec, bus;
     std::vector<float> mag, mt, mx, mn, ma;
     int frames = 0;

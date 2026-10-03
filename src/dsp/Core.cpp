@@ -28,6 +28,7 @@ void Core::prepare (const ProcessSpec& s, const Params& p)
     eDelay.prepare (fftSize);
     detector.prepare (fs);
     analyser.prepare (fs);
+    panFader.prepare (fs);
     spreadGen.prepare (spec);
     haasGen.prepare (spec);
     modGen.prepare (spec);
@@ -38,7 +39,7 @@ void Core::prepare (const ProcessSpec& s, const Params& p)
     out.prepare (spec);
     meters.prepare (fs);
 
-    for (auto* v : { &m, &sIn, &mD, &sInD, &e, &tonal, &noise, &tonalNoise, &sBus, &dBus, &sTmp, &mTmp, &sSyn, &mOut, &outTmpL, &outTmpR })
+    for (auto* v : { &m, &sIn, &mD, &sInD, &e, &tonal, &noise, &tonalNoise, &panSide, &panPost, &sBus, &dBus, &sTmp, &mTmp, &sSyn, &mOut, &outTmpL, &outTmpR })
         v->assign ((size_t) spec.maxBlockSize, 0.0f);
 
     engineFadeLen = std::max (1, (int) std::lround (0.020 * fs));
@@ -63,6 +64,8 @@ void Core::applySnap (const Params& p)
     engineSwitching = false;
     engineFadePos = engineFadeLen;
 
+    panMode = p.panMode;
+    panFader.snap();
     spreadGen.setParams (p, true);
     haasGen.setParams (p, true);
     modGen.setParams (p, true);
@@ -121,6 +124,8 @@ void Core::process (const float* inL, const float* inR, float* outL, float* outR
             slots[(size_t) g].amount.setTargetValue (amounts[g]);
         if (params.engine != engine)
             engineSwitching = true;
+        if (params.panMode != panMode)
+            panFader.request();
     }
 
     int done = 0;
@@ -200,10 +205,23 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
         modGen.reset();
     if (decide (genVelvet, velvetGen.active().source, velvetGen.pending().source, velvetGen.tailSamples(), velvetGen.isSettled()))
         velvetGen.reset();
-    for (GeneratorId g : { genPan })
+    // Pan map: Full engine only, and judged on the undelayed mid like the
+    // analysis it is part of. A pending mode change is applied between blocks.
+    if (panFader.readyToApply())
     {
-        slots[(size_t) g].awake = false;
-        slots[(size_t) g].amount.skip (n);
+        panMode = params.panMode;
+        analyser.resetPanMap();
+        panFader.applied();
+    }
+    {
+        auto& slot = slots[genPan];
+        const bool zeroGain = ! full || widthZero
+                              || (panFader.isSettled() && ! slot.amount.isSmoothing() && slot.amount.getTargetValue() == 0.0f);
+        allZeroGain = allZeroGain && zeroGain;
+        slot.awake = slot.sleep.update (zeroGain, peakM, n, fftSize + (int64_t) std::lround (0.5 * fs),
+                                        forceAwake && full);
+        if (slot.sleep.justFellAsleep())
+            analyser.resetPanMap();
     }
 
     // 4. Analysis and buses. In the Light engine every bus is the mid.
@@ -225,14 +243,19 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
 
         // The whole analysis sleeps when nobody consumes it, or when the mid
         // has been silent for N samples plus 0.5 s.
-        const bool wanted = needTonal || needNoise;
+        const bool panAwake = slots[genPan].awake;
+        const bool wanted = needTonal || needNoise || panAwake;
         const bool stages = analyserSleep.update (! wanted, peakM, n,
                                                   fftSize + (int64_t) std::lround (0.5 * fs), forceAwake);
         if (analyserSleep.justFellAsleep())
             analyser.reset();
         analyser.setParams (params.ambience, params.roomDecayS);
-        const Analysis::Needs needs { stages, stages && needTonal, stages && needNoise, false };
-        analyser.process (m.data(), n, needs, tonal.data(), noise.data(), nullptr);
+        analyser.panMap().setParams (panMode, params.panDepth, params.panDensity, params.panBassCenterHz,
+                                     params.panMaxGroups);
+        if (stages && panAwake)
+            side.spectralWeights (analyser.panMap().weights(), analyser.numBins(), analyser.fftSize());
+        const Analysis::Needs needs { stages, stages && needTonal, stages && needNoise, false, stages && panAwake };
+        analyser.process (m.data(), n, needs, tonal.data(), noise.data(), nullptr, panSide.data());
         if (needTonal && needNoise)
             for (int i = 0; i < n; ++i)
                 tonalNoise[(size_t) i] = tonal[(size_t) i] + noise[(size_t) i];
@@ -310,12 +333,30 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     else
         slots[genVelvet].amount.skip (n);
 
+    // The Pan map joins the side bus after its filters (they are already
+    // applied in the spectrum, without phase shift).
+    const bool panOut = slots[genPan].awake;
+    if (panOut)
+    {
+        auto& slot = slots[genPan];
+        for (int i = 0; i < n; ++i)
+            panPost[(size_t) i] = panSide[(size_t) i] * panFader.next() * slot.amount.getNextValue();
+        awakeMask |= 1u << genPan;
+    }
+    else
+    {
+        slots[genPan].amount.skip (n);
+        for (int i = 0; i < n; ++i)
+            panFader.next();
+    }
+
     // 7. Side bus.
     const bool allAsleep = awakeMask == 0;
     const float sidePeak = allAsleep ? std::max (PeakScanner::peak (sBus.data(), n), PeakScanner::peak (dBus.data(), n)) : 1.0f;
     const bool sideAwake = sideSleep.update (false, sidePeak, n, side.tailSamples(), forceAwake);
     if (sideAwake)
-        side.process (sBus.data(), dBus.data(), e.data(), mD.data(), sSyn.data(), mOut.data(), n);
+        side.process (sBus.data(), panOut ? panPost.data() : nullptr, dBus.data(), e.data(), mD.data(),
+                      sSyn.data(), mOut.data(), n);
     else
     {
         if (sideSleep.justFellAsleep())
@@ -355,6 +396,7 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     tailOf (genDelay, haasGen.active().source, haasGen.tailSamples());
     tailOf (genMod, modGen.active().source, modGen.tailSamples());
     tailOf (genVelvet, velvetGen.active().source, velvetGen.tailSamples());
+    tailOf (genPan, Source::Tonal, fftSize);
     if (sideAwake)
         longest = std::max (longest, side.tailSamples());
     tail.store ((double) (longest + latency) / fs, std::memory_order_relaxed);

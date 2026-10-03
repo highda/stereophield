@@ -25,9 +25,17 @@ public:
     void reset();
     void setParams (const Params& p, bool snap);
 
-    // e may be null (no ducking). Writes S_syn and M_out.
-    void process (const float* sBus, const float* dBus, const float* e, const float* mD,
+    // e may be null (no ducking). Writes S_syn and M_out. sPost (may be null)
+    // joins the side after steps 1 and 2: it carries the Pan map, whose
+    // bass-mono and band responses are applied in the spectrum without phase
+    // shift (see spectralWeights).
+    void process (const float* sBus, const float* sPost, const float* dBus, const float* e, const float* mD,
                   float* sSyn, float* mOut, int numSamples) noexcept;
+
+    // Zero-phase equivalent of steps 1 and 2 for bin frequencies k * fs / n:
+    // the magnitude of the bass-mono high-pass times the band-gain blend of
+    // the Linkwitz-Riley magnitudes, at the current smoothed settings.
+    void spectralWeights (float* w, int numBins, int fftSize) const noexcept;
 
     // While asleep: S_syn = 0 and M_out = M_d; smoothers keep moving.
     void advanceWhileAsleep (int numSamples) noexcept;

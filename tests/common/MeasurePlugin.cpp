@@ -3,6 +3,8 @@
 #include "common/Render.h"
 #include "common/SignalMath.h"
 
+#include <numbers>
+
 #include <algorithm>
 #include <cmath>
 
@@ -233,6 +235,186 @@ double sideEnergyAroundClick (int engine, float duck, double fromMs, double toMs
     return e;
 }
 } // namespace
+
+namespace
+{
+void panOnly (Plugin& pl)
+{
+    pl.set (ids::engine, 1);
+    pl.set (ids::spread_amount, 0);
+    pl.set (ids::pan_amount, 100);
+    pl.set (ids::pan_mode, 2);
+    pl.set (ids::pan_depth, 100);
+    pl.set (ids::transient_duck, 0);
+    pl.set (ids::guard, 0);
+}
+
+// Renders x block by block (one block per analysis hop) and calls
+// perBlock(outputTimeSeconds of the block end, panMap) after each block.
+template <typename PerBlock>
+Stereo renderWithHook (Plugin& pl, const Signal& x, PerBlock&& perBlock)
+{
+    Stereo out { Signal (x.size()), Signal (x.size()) };
+    juce::AudioBuffer<float> buf (2, pl.block);
+    juce::MidiBuffer midi;
+    for (size_t pos = 0; pos + (size_t) pl.block <= x.size(); pos += (size_t) pl.block)
+    {
+        buf.clear();
+        buf.copyFrom (0, 0, x.data() + pos, pl.block);
+        pl.processor().processBlock (buf, midi);
+        std::copy (buf.getReadPointer (0), buf.getReadPointer (0) + pl.block, out.l.begin() + (long) pos);
+        std::copy (buf.getReadPointer (1), buf.getReadPointer (1) + pl.block, out.r.begin() + (long) pos);
+        perBlock ((double) (pos + (size_t) pl.block) / pl.fs, pl.core().panMap());
+    }
+    return out;
+}
+
+// Index of the active track nearest to f within 3 %, or -1.
+int trackNear (const PartialTracker& tr, double f)
+{
+    int best = -1;
+    double bestErr = 0.03;
+    const auto& tracks = tr.tracks();
+    for (int i = 0; i < PartialTracker::maxTracks; ++i)
+    {
+        const auto& t = tracks[(size_t) i];
+        if (! t.active)
+            continue;
+        const double err = std::abs (t.freq / f - 1.0);
+        if (err <= bestErr)
+        {
+            bestErr = err;
+            best = i;
+        }
+    }
+    return best;
+}
+
+// Energy within +-3 Hz of the first 8 harmonics of f0 in x over [from, from + 2^16).
+double harmonicEnergy (const Signal& x, size_t from, double f0, double fs)
+{
+    const int order = 16;
+    const size_t n = (size_t) 1 << order;
+    const size_t len = std::min (n, x.size() - from);
+    Signal w (n, 0.0f);
+    for (size_t i = 0; i < len; ++i)
+        w[i] = (float) (x[from + i] * 0.5 * (1.0 - std::cos (2.0 * std::numbers::pi * (double) i / (double) len)));
+    const auto X = spectrum (w.data(), n, order);
+    double e = 0.0;
+    for (int h = 1; h <= 8; ++h)
+    {
+        const double f = h * f0;
+        const size_t k0 = (size_t) std::floor ((f - 3.0) * (double) n / fs), k1 = (size_t) std::ceil ((f + 3.0) * (double) n / fs);
+        for (size_t k = k0; k <= k1; ++k)
+            e += std::norm (X[k]);
+    }
+    return e;
+}
+} // namespace
+
+Result t13SourceGrouping()
+{
+    Result r { "T13", "twoSource, Groups, 1.5-2.5 s: exactly 2 groups; >= 12 of 16 partials in the right group; opposite pans; each source >= 6 dB louder on its own side", "", false, true, "" };
+    Plugin pl;
+    panOnly (pl);
+    pl.prepare();
+    const Signal x = twoSource (pl.fs);
+    const double lat = pl.latency() / pl.fs;
+
+    int frames = 0, framesWithTwo = 0;
+    std::vector<int> correctVotes (16, 0);
+    double panA = 0, panB = 0;
+    int minGroups = 99, maxGroups = 0;
+    renderWithHook (pl, x, [&] (double t, const PanMap& pm)
+    {
+        const double analysedTo = t - 0.0; // analysis runs on the undelayed mid
+        if (analysedTo < 1.5 || analysedTo > 2.5)
+            return;
+        ++frames;
+        const auto& gr = pm.grouper();
+        const int g = gr.numActive();
+        minGroups = std::min (minGroups, g);
+        maxGroups = std::max (maxGroups, g);
+        framesWithTwo += g == 2 ? 1 : 0;
+
+        int ga = -1, gb = -1;
+        for (int i = 0; i < SourceGrouper::maxGroups; ++i)
+        {
+            const auto& grp = gr.groups()[(size_t) i];
+            if (! grp.active)
+                continue;
+            if (std::abs (grp.f0 / twoSourceF0A - 1.0) <= 0.03)
+                ga = i;
+            else if (std::abs (grp.f0 / twoSourceF0B - 1.0) <= 0.03)
+                gb = i;
+        }
+        if (ga >= 0)
+            panA = gr.groups()[(size_t) ga].pan;
+        if (gb >= 0)
+            panB = gr.groups()[(size_t) gb].pan;
+        for (int h = 1; h <= 8; ++h)
+        {
+            const int ta = trackNear (pm.tracker(), h * twoSourceF0A);
+            const int tb = trackNear (pm.tracker(), h * twoSourceF0B);
+            if (ta >= 0 && ga >= 0 && pm.tracker().tracks()[(size_t) ta].group == ga)
+                ++correctVotes[(size_t) (h - 1)];
+            if (tb >= 0 && gb >= 0 && pm.tracker().tracks()[(size_t) tb].group == gb)
+                ++correctVotes[(size_t) (8 + h - 1)];
+        }
+    });
+    // Rendered again without the hook for the level measurement.
+    Plugin pl2;
+    panOnly (pl2);
+    pl2.prepare();
+    const auto y = pl2.render (x);
+    juce::ignoreUnused (lat);
+
+    int correct = 0;
+    for (int v : correctVotes)
+        correct += 2 * v > frames ? 1 : 0;
+    const size_t from = (size_t) samples (1.5, pl.fs) + (size_t) pl.latency();
+    const double aL = harmonicEnergy (y.l, from, twoSourceF0A, pl.fs), aR = harmonicEnergy (y.r, from, twoSourceF0A, pl.fs);
+    const double bL = harmonicEnergy (y.l, from, twoSourceF0B, pl.fs), bR = harmonicEnergy (y.r, from, twoSourceF0B, pl.fs);
+    const double dA = 10.0 * std::log10 (aL / aR), dB = 10.0 * std::log10 (bL / bR);
+
+    const bool twoGroups = framesWithTwo == frames && frames > 0;
+    const bool opposite = panA * panB < 0.0;
+    const bool levels = std::abs (dA) >= 6.0 && std::abs (dB) >= 6.0 && dA * dB < 0.0;
+    r.pass = twoGroups && correct >= 12 && opposite && levels;
+    r.measured = "groups " + std::to_string (minGroups) + ".." + std::to_string (maxGroups) + " over " + std::to_string (frames)
+                 + " frames; " + std::to_string (correct) + "/16 partials correct; pans A " + fmt (panA, 2) + ", B " + fmt (panB, 2)
+                 + "; L-R A " + fmt (dA) + " dB, B " + fmt (dB) + " dB";
+    return r;
+}
+
+Result t14MelodyInPlace()
+{
+    Result r { "T14", "melody, same setup as T13: all four notes receive the same pan", "", false, true, "" };
+    Plugin pl;
+    panOnly (pl);
+    pl.prepare();
+    const Signal x = melody (pl.fs);
+    double pans[4] = { 9, 9, 9, 9 };
+    renderWithHook (pl, x, [&] (double t, const PanMap& pm)
+    {
+        for (int i = 0; i < 4; ++i)
+        {
+            // Sample each note 200 ms after its start.
+            const double at = signals::melodyNoteStart (i, pl.fs) / pl.fs + 0.200;
+            if (t < at || t >= at + (double) pl.block / pl.fs)
+                continue;
+            const int ti = trackNear (pm.tracker(), melodyNotes[i]);
+            if (ti < 0)
+                continue;
+            const auto& tr = pm.tracker().tracks()[(size_t) ti];
+            if (tr.group >= 0)
+                pans[i] = pm.grouper().groups()[(size_t) tr.group].pan;
+        }
+    });
+    r.pass = pans[0] != 9 && pans[0] == pans[1] && pans[1] == pans[2] && pans[2] == pans[3];
+    r.measured = "pans " + fmt (pans[0], 2) + ", " + fmt (pans[1], 2) + ", " + fmt (pans[2], 2) + ", " + fmt (pans[3], 2);
+    return r;
+}
 
 Result t15TransientCentring()
 {

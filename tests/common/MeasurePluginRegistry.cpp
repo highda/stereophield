@@ -20,6 +20,8 @@ const std::vector<Entry>& registry()
         { "T10", t10BusesSum },
         { "T11", t11SplitQuality },
         { "T12", t12Ambience },
+        { "T13", t13SourceGrouping },
+        { "T14", t14MelodyInPlace },
         { "T15", t15TransientCentring },
         { "T16", t16Guard },
         { "T27", t27Bypass },
