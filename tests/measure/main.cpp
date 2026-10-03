@@ -8,6 +8,7 @@
 #include "common/Render.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
+#include "common/Fixtures.h"
 
 #include <cstdio>
 #include <map>
@@ -67,6 +68,32 @@ void renderPresets (const juce::File& dir)
                      10.0 * std::log10 (ss / mm + 1e-30), lr / std::sqrt (ll * rr + 1e-30));
     }
 }
+// Session fixtures for P2-T30: random states saved by this build, with the
+// SHA-256 of their rendered output.
+void makeFixtures (const juce::File& dir)
+{
+    dir.createDirectory();
+    juce::String hashes;
+    for (int i = 0; i < 20; ++i)
+    {
+        test::Plugin pl;
+        Rng rng (20000u + (uint32_t) i);
+        for (const char* id : ids::all)
+            pl.setNormalised (id, (float) rng.uniform());
+        juce::MemoryBlock state;
+        pl.processor().getStateInformation (state);
+        const auto name = "session_" + juce::String (i).paddedLeft ('0', 2);
+        dir.getChildFile (name + ".state").replaceWithData (state.getData(), state.getSize());
+
+        test::Plugin fresh;
+        fresh.processor().setStateInformation (state.getData(), (int) state.getSize());
+        fresh.prepare();
+        const auto y = fresh.render (signals::mix (fresh.fs));
+        hashes << name << " " << test::hashRender (y) << "\n";
+    }
+    dir.getChildFile ("hashes.txt").replaceWithText (hashes);
+    std::printf ("wrote 20 fixtures to %s\n", dir.getFullPathName().toRawUTF8());
+}
 } // namespace
 
 int main (int argc, char** argv)
@@ -84,6 +111,11 @@ int main (int argc, char** argv)
             outPath = argv[++i];
         else if (a == "--renders" && i + 1 < argc)
             rendersPath = argv[++i];
+        else if (a == "--make-fixtures" && i + 1 < argc)
+        {
+            makeFixtures (juce::File::getCurrentWorkingDirectory().getChildFile (argv[++i]));
+            return 0;
+        }
         else
             selected.push_back (a);
     }
