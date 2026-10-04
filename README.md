@@ -1,8 +1,12 @@
 # stereophield
 
-A mono-to-stereo widening Audio Unit and Standalone app for macOS on Apple Silicon, built from classical signal processing only. Its output sums back in mono to the untouched input: every algorithm adds to the side signal, and the mid is only delayed, never filtered. The interface is in English and Czech, and it teaches stereo widening as you use it.
+A didactic mono-to-stereo widening Audio Unit and Standalone app for macOS on Apple Silicon: a tool for learning how stereo width works, and a widener for everyday mixing. Its output sums back in mono to the untouched input: every algorithm adds to the side signal, and the mid is only delayed, never filtered.
 
-It opens in **Easy mode**: one Width knob and three to shape it. **Full controls** opens the complete instrument underneath, sounding exactly the same.
+**For everyday use**, it opens in **Easy mode**: one Width knob and three to shape it, with curves fitted so that the result stays mono-compatible, phase-stable and loudness-neutral on any material. **Full controls** opens the complete instrument underneath, sounding exactly the same.
+
+**For learning**, every control explains itself in an info panel (what it does, what its current value means, how it works, something to try, the background in depth), eleven lessons walk through the ideas from how we hear width to widening in a mix, teaching sources let you hear each effect without material of your own, and live views show every signal path. The interface is in English and Czech.
+
+It uses classical signal processing and psychoacoustic models only, with no machine learning: filters, delays, short-time Fourier analysis, partial tracking, an image-source room model and a spherical-head listener model. The Easy mode curves and the velvet-noise sequences were tuned offline by numerical optimisation against measurements; at run time everything is deterministic DSP.
 
 ![stereophield, Easy mode](docs/ui-easy/easy-en.png)
 
@@ -97,7 +101,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a `v
 
 ## Česky
 
-stereophield je plugin Audio Unit a samostatná aplikace pro macOS na Apple Silicon, která z mono signálu dělá stereo pouze klasickým zpracováním signálu. Jeho výstup se v mono sečte přesně na nedotčený vstup: všechny algoritmy přidávají jen do boční složky (side) a střed (mid) se pouze zpožďuje, nikdy nefiltruje. Rozhraní je v češtině a angličtině (přepínač EN | CZ v záhlaví) a při práci učí, jak stereo rozšiřování funguje.
+stereophield je didaktický plugin Audio Unit a samostatná aplikace pro macOS na Apple Silicon, která z mono signálu dělá stereo: nástroj k učení, jak stereo šíře funguje, i rozšiřovač pro běžnou práci v mixu. Jeho výstup se v mono sečte přesně na nedotčený vstup: všechny algoritmy přidávají jen do boční složky (side) a střed (mid) se pouze zpožďuje, nikdy nefiltruje. Rozhraní je v češtině a angličtině (přepínač EN | CZ v záhlaví). Plugin používá jen klasické zpracování signálu a psychoakustické modely, žádné strojové učení; křivky snadného režimu a sekvence velvet noise byly vyladěny předem numerickou optimalizací podle měření.
 
 **Instalace.** Stáhněte si poslední verzi z [Releases](https://github.com/highda/stereophield/releases): balíček `.pkg` nainstaluje plugin do `/Library/Audio/Plug-Ins/Components` a aplikaci do `/Applications`. Sestavení nejsou podepsaná; pokud je macOS zablokuje, otevřete balíček pravým tlačítkem a zvolte Otevřít, nebo odstraňte příznak karantény příkazem `xattr` uvedeným výše.
 
