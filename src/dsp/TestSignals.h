@@ -1,6 +1,6 @@
 #pragma once
 
-// Generated test signals of DESIGN.md section 10.2. All deterministic.
+// Generated test signals All deterministic.
 
 #include "dsp/Rng.h"
 

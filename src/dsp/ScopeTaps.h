@@ -7,7 +7,7 @@
 
 namespace sph
 {
-// Scope taps (PART2_LEDGER.md V1). Each enabled tap reduces its signal to
+// Scope taps. Each enabled tap reduces its signal to
 // min/max columns of C = fs / 400 samples, written into its own ring of
 // 4096 columns (about 10 s). One writer (the audio thread), any number of
 // readers (the user interface); values are relaxed atomics, the write index is
@@ -59,7 +59,7 @@ private:
     uint32_t activityNow = 0;
 };
 
-// Raw output for the frequency-domain meters (V6, V7): (L, R, dry mid)
+// Raw output for the frequency-domain meters: (L, R, dry mid)
 // triples in a single-producer single-consumer ring.
 class OutputRing
 {

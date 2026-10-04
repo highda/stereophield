@@ -4,7 +4,7 @@
 
 namespace sph
 {
-// The component signals a generator can read (DESIGN.md section 4.1). In the
+// The component signals a generator can read. In the
 // Light engine every pointer is the input mid.
 struct Buses
 {

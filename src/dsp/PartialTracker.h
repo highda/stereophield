@@ -4,7 +4,7 @@
 
 namespace sph
 {
-// Stage C of DESIGN.md section 6.2.5: peak picking on the tonal magnitudes and
+// Stage C: peak picking on the tonal magnitudes and
 // frame-to-frame partial tracking in 96 fixed slots.
 class PartialTracker
 {

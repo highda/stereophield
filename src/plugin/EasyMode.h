@@ -6,7 +6,7 @@
 
 namespace sph::easy
 {
-// Easy mode mapping (PART3_LEDGER.md section 4): four macros drive the
+// Easy mode mapping: four macros drive the
 // complete parameter set through monotone piecewise-linear curves, one set per
 // material class, blended by the classifier's weights.
 

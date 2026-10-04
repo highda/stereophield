@@ -18,7 +18,7 @@ namespace sph
 class StereophieldProcessor;
 using APVTSAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
 
-// The Part 2 editor (PART2_LEDGER.md section 8): 1240 x 800 points with the
+// The editor: 1240 x 800 points with the
 // info panel open, 980 x 800 with it collapsed, scaled by the zoom setting.
 class PluginEditor : public juce::AudioProcessorEditor,
                      private juce::Timer,
@@ -45,7 +45,7 @@ public:
     ui::InfoPanel& infoPanel() noexcept { return info; }
     juce::Component& rootComponent() noexcept { return root; }
     juce::String liveText (const juce::String& helpKey) const;
-    // Easy mode (PART3_LEDGER.md section 6): the header's mode button expands
+    // Easy mode: the header's mode button expands
     // at once, or asks before collapsing. answerCollapseForTest presses the
     // confirmation's OK (true) or Cancel (false).
     void pressModeButtonForTest() { modeButton.onClick(); }

@@ -1,6 +1,6 @@
 #pragma once
 
-// Measurements of Easy mode renders (PART3_LEDGER.md sections 3 and 4.2),
+// Measurements of Easy mode renders,
 // shared by the P3 tests and sph_easy_opt.
 
 #include "common/Corpus.h"

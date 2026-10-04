@@ -30,10 +30,10 @@ Result p2t13MonoFoldMeter();
 Result p2t37WholeBudget();
 Result r3AutoWidth();
 
-// Part 2.
+// Views, learning and the generators added in 2.0 (P2).
 Result p2t14PerceivedWidth();
 
-// Part 3: Easy mode.
+// Easy mode (P3).
 Result p3t1EasyMonoSafe();
 Result p3t2LinearWidth();
 Result p3t3Correlation();
@@ -61,7 +61,7 @@ Result p2t10ScopeCost();
 Result p2t23ImageRemap();
 Result p2t24ImageMonoSafe();
 
-// Perceptual metrics of one stereo render against its input (I12).
+// Perceptual metrics of one stereo render against its input.
 struct Perceptual
 {
     double correlation, asw, monoFoldDb, lufsChange;

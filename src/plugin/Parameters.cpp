@@ -70,11 +70,11 @@ struct ParameterList
 Layout createParameterLayout()
 {
     // Parameters are created in their 1.0 order and then placed in host
-    // groups (PART2_LEDGER.md I10). Audio Unit hosts identify parameters by
+    // groups. Audio Unit hosts identify parameters by
     // a hash of their ID, so grouping changes no automation.
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> all;
     ParameterList l { all };
-    // Global, section 8.2. The engine changes latency, so it is not automatable.
+    // Global. The engine changes latency, so it is not automatable.
     l.add (choice (ids::engine, "Engine", { "Light", "Full" }, 0, false));
     l.add (percent (ids::width, "Width", 200.0f, 100.0f));
     l.add (percent (ids::mid_blend, "Mid blend", 100.0f, 0.0f));
@@ -93,7 +93,7 @@ Layout createParameterLayout()
     l.add (percent (ids::ambience, "Ambience", 100.0f, 50.0f));
     l.add (plain (ids::room_decay_s, "Room decay", 0.3f, 3.0f, 1.0f, "s", 2));
 
-    // Generators, section 8.3.
+    // Generators.
     l.add (percent (ids::spread_amount, "Spread amount", 100.0f, 60.0f));
     l.add (choice (ids::spread_source, "Spread source", sources, 0));
     l.add (choice (ids::spread_type, "Spread type", { "Delay", "Cascade" }, 1));
@@ -132,7 +132,7 @@ Layout createParameterLayout()
     l.add (hertz (ids::pan_bass_center_hz, "Pan bass centre", 60.0f, 300.0f, 120.0f));
     l.add (std::make_unique<Int> (pid (ids::pan_max_groups), "Pan groups", 2, 8, 6));
 
-    // Part 2, version hint 2.
+    // Added in 2.0, version hint 2.
     constexpr int v2 = 2;
     l.add (percent (ids::coh_amount, "Coherence amount", 100.0f, 0.0f, v2));
     l.add (choice (ids::coh_source, "Coherence source", sources, 0, true, v2));
@@ -186,8 +186,8 @@ Layout createParameterLayout()
     l.add (choice (ids::width_mode, "Width mode", { "Manual", "Auto" }, 0, true, v2));
     l.add (plain (ids::asw_target, "Auto-width target", 0.0f, 0.55f, 0.3f, "", 2, v2));
 
-    // Part 3, version hint 3: the guard's ceiling, then Easy mode
-    // (PART3_LEDGER.md section 7).
+    // Added in 3.0, version hint 3: the guard's ceiling, then Easy mode
+    //.
     constexpr int v3 = 3;
     l.add (plain (ids::guard_ceiling_db, "Guard ceiling", -12.0f, 0.0f, 0.0f, "dB", 1, v3));
     l.add (choice (ids::ui_mode, "Mode", { "Easy", "Complete" }, 0, false, v3));

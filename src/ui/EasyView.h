@@ -17,7 +17,7 @@ class StereophieldProcessor;
 
 namespace sph::ui
 {
-// The Easy mode face (PART3_LEDGER.md section 2): four macros, Adapt and Low
+// The Easy mode face: four macros, Adapt and Low
 // latency, the meters, the detected material and what the macros are doing
 // under the hood. Fills the area left of the info panel, below the header.
 class EasyView : public juce::Component, public Localisable

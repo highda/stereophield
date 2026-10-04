@@ -4,11 +4,11 @@
 
 namespace sph
 {
-// Transient envelope e(n) of DESIGN.md section 6.2.1, on the undelayed mid.
+// Transient envelope e(n), on the undelayed mid.
 class TransientDetector
 {
 public:
-    // Tunable constants (spec: 1.5, 1.5, 40 ms); see docs/DECISIONS.md, T15.
+    // Tuned constants (T15).
     static constexpr double ratioThreshold = 2.2;
     static constexpr double ratioRange = 0.6;
     static constexpr double holdSeconds = 0.100;

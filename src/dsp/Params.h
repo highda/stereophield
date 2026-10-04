@@ -18,7 +18,7 @@ enum class TransientMode { Envelope, SpectralFlux };
 enum class PanOwnership { Hard, Soft };
 enum class WidthMode { Manual, Auto };
 
-// Every parameter of DESIGN.md section 8 in processing units: percentages are
+// Every parameter in processing units: percentages are
 // fractions (0 to 1, or 0 to 2 for widths), times in ms, frequencies in Hz.
 struct Params
 {
@@ -71,7 +71,7 @@ struct Params
     float panBassCenterHz = 120.0f;
     int panMaxGroups = 6;
 
-    // Part 2 (version hint 2).
+    // Added in 2.0 (version hint 2).
     float cohAmount = 0.0f;
     Source cohSource = Source::Full;
     CohMode cohMode = CohMode::SpacedPair;
@@ -102,7 +102,7 @@ struct Params
     WidthMode widthMode = WidthMode::Manual;
     float aswTarget = 0.3f;
 
-    // Part 3 (version hint 3): the guard's side ceiling against the mid, in
+    // Added in 3.0 (version hint 3): the guard's side ceiling against the mid, in
     // dB. 0 dB keeps the correlation at or above 0, as before; Easy mode
     // uses it to bound the loudness change.
     float guardCeilingDb = 0.0f;

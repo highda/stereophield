@@ -4,7 +4,7 @@
 
 namespace sph::ui
 {
-// Visual style of DESIGN.md section 9.4.
+// Visual style
 namespace colours
 {
 inline const juce::Colour background { 0xff14161a };

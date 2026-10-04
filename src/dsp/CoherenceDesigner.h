@@ -11,7 +11,7 @@
 
 namespace sph
 {
-// Target-coherence stereo synthesis (PART2_LEDGER.md G6). With the dry mid M
+// Target-coherence stereo synthesis. With the dry mid M
 // and a decorrelated copy D, L = M + a D and R = M - a D keep (L + R) / 2 = M
 // exactly while the inter-channel coherence follows a target curve c(f). The
 // gain a is solved per ERB band from measured statistics; the part of D in

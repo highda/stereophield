@@ -321,7 +321,7 @@ PluginEditor::PluginEditor (StereophieldProcessor& p) : AudioProcessorEditor (p)
     overlay.setInterceptsMouseClicks (false, false);
     root.addAndMakeVisible (overlay);
 
-    // Every control can be reached and operated with the keyboard (I9).
+    // Every control can be reached and operated with the keyboard.
     std::function<void (juce::Component&)> focusable = [&focusable] (juce::Component& c)
     {
         if (dynamic_cast<juce::Slider*> (&c) != nullptr || dynamic_cast<juce::ComboBox*> (&c) != nullptr
@@ -845,7 +845,7 @@ void PluginEditor::layout()
 
 juce::String PluginEditor::liveText (const juce::String& key) const
 {
-    // Live explanations (PART2_LEDGER.md L4), computed from current values.
+    // Live explanations, computed from current values.
     auto value = [this] (const char* id)
     {
         auto* p = proc.state().getParameter (id);
@@ -1010,6 +1010,10 @@ void PluginEditor::timerCallback()
 
     // Info panel: the entry under the mouse.
     juce::String hk = forcedHover;
+    // Over the info panel itself the entry stays, so it can be read and
+    // scrolled.
+    if (hk.isEmpty() && info.isMouseOver (true))
+        hk = info.currentKey();
     if (hk.isEmpty())
     {
         const auto pos = root.getMouseXYRelative();

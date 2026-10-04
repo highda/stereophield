@@ -1,6 +1,6 @@
 #pragma once
 
-// Offline driver for the full AudioProcessor (DESIGN.md section 10.1).
+// Offline driver for the full AudioProcessor.
 
 #include "plugin/PluginProcessor.h"
 #include "plugin/Presets.h"
@@ -29,7 +29,7 @@ public:
         layout.outputBuses.add (juce::AudioChannelSet::stereo());
         proc->setBusesLayout (layout);
         // Tests of the engine drive its parameters directly: the complete
-        // interface. Easy mode tests switch back (PART3_LEDGER.md).
+        // interface. Easy mode tests switch back.
         set (ids::ui_mode, 1.0f);
     }
 
@@ -58,7 +58,7 @@ public:
         proc->state().getParameter (id)->setValueNotifyingHost (value01);
     }
 
-    // presetNumber is 1-based, as in DESIGN.md section 8.4.
+    // presetNumber is 1-based, as in the preset menu.
     void preset (int presetNumber) { proc->setCurrentProgram (presetNumber - 1); }
 
     void prepare()

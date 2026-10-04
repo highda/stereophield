@@ -1,6 +1,6 @@
 # Preset metrics
 
-Written by `sph_measure --metrics`. Each factory preset on 6 s of `mix` (mono input, 48 kHz), measured after 1 s. These are objective companions to listening, not pass criteria (PART2_LEDGER.md, I12).
+Written by `sph_measure --metrics`. Each factory preset on 6 s of `mix` (mono input, 48 kHz), measured after 1 s. These are objective companions to listening, not pass criteria.
 
 - **Correlation**: broadband L/R correlation.
 - **ASW**: apparent source width from the virtual listener (0 = point source, 1 = fully diffuse).

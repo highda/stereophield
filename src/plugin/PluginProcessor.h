@@ -17,7 +17,7 @@ class StereophieldProcessor : public juce::AudioProcessor,
                               private juce::AsyncUpdater
 {
 public:
-    // Every parameter's exact plain value (PART2_LEDGER.md I7).
+    // Every parameter's exact plain value.
     using Snapshot = std::array<float, numParameters>;
     StereophieldProcessor();
     ~StereophieldProcessor() override;
@@ -52,7 +52,7 @@ public:
     Core& core() noexcept { return dsp; }
     const Core& core() const noexcept { return dsp; }
 
-    // Never let modules sleep (DESIGN.md section 7.6). Tests only.
+    // Never let modules sleep. Tests only.
     void setForceAwake (bool on) noexcept { dsp.forceAwake = on; }
 
     // Undo, redo and A/B compare (message thread). An undo point is the
@@ -68,7 +68,7 @@ public:
     void selectCompareSlot (int slot);
     void copyCompareAToB();
 
-    // User presets (I8): XML files in the user preset folder.
+    // User presets: XML files in the user preset folder.
     static juce::File userPresetFolder();
     juce::StringArray userPresets() const;
     bool saveUserPreset (const juce::String& name);
@@ -76,7 +76,7 @@ public:
     bool deleteUserPreset (const juce::String& name);
     bool loadStateXml (const juce::XmlElement& xml);
 
-    // Teaching sources (L6): 0 off, 1 noise, 2 two sources, 3 melody,
+    // Teaching sources: 0 off, 1 noise, 2 two sources, 3 melody,
     // 4 tone and click, 5 drum loop. Never saved; Off after a state load.
     void setTeachingSource (int index);
     int teachingSource() const noexcept { return teachIndex; }
@@ -86,7 +86,7 @@ public:
     int uiLanguage() const noexcept { return language; }
     void setUiLanguage (int l);
 
-    // Easy mode (PART3_LEDGER.md). Expand writes the mapped values into every
+    // Easy mode. Expand writes the mapped values into every
     // parameter and switches to Complete, as one undo point; nothing is
     // heard. Collapse switches back to Easy and needs the user's
     // confirmation; without it nothing changes. Message thread.

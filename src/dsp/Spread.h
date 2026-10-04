@@ -13,7 +13,7 @@
 
 namespace sph
 {
-// All-pass side engine (DESIGN.md section 6.3.1): s = A(u), m = 0.
+// All-pass side engine: s = A(u), m = 0.
 class Spread
 {
 public:

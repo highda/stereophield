@@ -8,8 +8,8 @@
 
 namespace sph
 {
-// Output stage of DESIGN.md section 6.5: matrix, loudness compensation,
-// output gain, listen mode, and the latency-aligned bypass of section 6.1.
+// Output stage: matrix, loudness compensation,
+// output gain, listen mode, and the latency-aligned bypass.
 class OutputStage
 {
 public:

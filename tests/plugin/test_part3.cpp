@@ -2,8 +2,8 @@
 
 #include "common/MeasurePlugin.h"
 
-// Part 3 (PART3_LEDGER.md section 8). Tunable criteria may pass with a
-// logged fallback (docs/DECISIONS.md), as in Part 2.
+// Easy mode. Tunable criteria may pass with a documented known limit
+// (docs/TESTING.md).
 #define SPH_P3_TEST(fn, name, tag)                  \
     TEST_CASE (name, tag)                           \
     {                                               \

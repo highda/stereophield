@@ -8,7 +8,7 @@
 
 namespace sph
 {
-// Early-reflection width (PART2_LEDGER.md G8): image sources of a shoebox
+// Early-reflection width: image sources of a shoebox
 // room up to second order, at most 80 ms after the direct sound, no tail,
 // received by a virtual ORTF pair (two cardioids 17 cm apart, axes at +-55
 // degrees) placed off the room's centre lines. Each reflection reaches the two microphones with its own delay

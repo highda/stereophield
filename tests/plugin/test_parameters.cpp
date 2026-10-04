@@ -12,7 +12,7 @@ struct Spec
     float lo, hi, def;
 };
 
-// DESIGN.md sections 8.2 and 8.3, in parameter units. Choices are given as
+// The original 50 parameters, in parameter units. Choices are given as
 // 0 .. (items - 1) with the default index.
 const Spec table[] = {
     { "engine", 0, 1, 0 },           { "width", 0, 200, 100 },          { "mid_blend", 0, 100, 0 },
@@ -38,7 +38,7 @@ const Spec table[] = {
 bool near (float a, float b) { return std::abs (a - b) <= 1e-4f * std::max (1.0f, std::abs (b)); }
 } // namespace
 
-TEST_CASE ("The 50 parameters of 1.0 match DESIGN.md section 8", "[parameters]")
+TEST_CASE ("The 50 parameters of 1.0 keep their IDs, ranges and defaults", "[parameters]")
 {
     test::Plugin pl;
     auto& state = pl.processor().state();

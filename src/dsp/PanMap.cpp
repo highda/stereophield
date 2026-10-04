@@ -82,7 +82,7 @@ void PanMap::processFrame (const std::complex<float>* x, const float* a, const f
         });
         if (ownership == PanOwnership::Soft)
         {
-            // Soft ownership (PART2_LEDGER.md I5): every bin within +-6 N/2048
+            // Soft ownership: every bin within +-6 N/2048
             // of a track's peak takes the average of those tracks' pans,
             // weighted by the partial's power in the bin: amplitude times the
             // window's main-lobe response

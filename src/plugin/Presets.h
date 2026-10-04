@@ -7,7 +7,7 @@
 
 namespace sph
 {
-// Factory presets of DESIGN.md section 8.4. Values are in parameter units:
+// Factory presets Values are in parameter units:
 // percent, Hz, ms, or the index of a choice.
 struct Preset
 {

@@ -161,27 +161,51 @@ TEST_CASE ("P2-T3 switching language 100 times keeps the layout and the paramete
     }
 }
 
-TEST_CASE ("P2-T4 every info entry fits the panel in both languages", "[P2-T4][ui]")
+TEST_CASE ("P2-T4 every info entry can be read to its end in both languages", "[P2-T4][ui]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    float worst = 0.0f;
-    juce::String worstKey;
+    ui::InfoPanel panel;
+    panel.setSize (PluginEditor::fullWidth - PluginEditor::compactWidth - 6, PluginEditor::height - 54 - 6);
+    int scrolling = 0, checked = 0;
     for (int language = 0; language < 2; ++language)
     {
         ui::setLanguage (language == 1 ? ui::Language::Czech : ui::Language::English);
         for (const auto& k : ui::helpKeys())
         {
-            const float h = ui::InfoPanel::textHeight (k, 236.0f);
-            if (h > worst)
-            {
-                worst = h;
-                worstKey = k;
-            }
+            INFO (k << " " << language);
+            panel.show (k, "At 15.0 ms the comb notches are 66.7 Hz apart; the first is at 33.3 Hz.");
+            const float h = panel.measure();
+            CHECK (h > 0.0f);
+            CHECK (panel.scrollOffset() == 0.0f);
+            // Scrolling reaches exactly the end of the text, and no further.
+            panel.scrollBy (100000.0f);
+            CHECK (panel.scrollOffset() == panel.maxScroll());
+            CHECK (panel.maxScroll() >= 0.0f);
+            scrolling += panel.maxScroll() > 0.0f ? 1 : 0;
+            panel.scrollBy (-100000.0f);
+            CHECK (panel.scrollOffset() == 0.0f);
+            ++checked;
         }
     }
     ui::setLanguage (ui::Language::English);
-    INFO ("tallest " << worstKey << " " << worst);
-    CHECK (worst <= 700.0f);
+    UNSCOPED_INFO (checked << " entries, " << scrolling << " scroll");
+    CHECK (checked > 300);
+}
+
+TEST_CASE ("Every in-depth section belongs to an entry and exists in both languages", "[ui][learn]")
+{
+    for (const auto& k : ui::deepKeys())
+    {
+        INFO (k);
+        CHECK (ui::hasHelp (k));
+        juce::String en, cs;
+        REQUIRE (ui::deepIn (k, ui::Language::English, en));
+        REQUIRE (ui::deepIn (k, ui::Language::Czech, cs));
+        CHECK (en.length() > 200);
+        CHECK (cs.length() > 200);
+    }
+    CHECK (ui::deepKeys().size() >= 28);
+    CHECK (ui::tours().size() == 11);
 }
 
 TEST_CASE ("P2-T5 hovering shows the entry; pin keeps it", "[P2-T5][ui]")
@@ -268,6 +292,8 @@ TEST_CASE ("P2-T7 tours highlight existing controls and change parameters only o
                 p.commitUndoPoint();
                 for (const auto& [id, v] : step.apply)
                     e.pl.set (id, v);
+                if (p.snapshot() == pre)
+                    continue; // the step's state was already set: nothing to undo
                 p.commitUndoPoint();
                 p.undo();
                 CHECK (p.snapshot() == pre);

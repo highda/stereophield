@@ -7,8 +7,7 @@
 
 namespace sph
 {
-// Frequency-domain image expander for stereo input (PART2_LEDGER.md X1,
-// after Avendano and Jot). Per bin, from smoothed statistics of the input mid
+// Frequency-domain image expander for stereo input, after Avendano and Jot. Per bin, from smoothed statistics of the input mid
 // M and side S: the panning index rho = Re E[S M*] / E|M|^2 and the
 // coherence kappa = |E[S M*]| / sqrt(E|S|^2 E|M|^2) (1 for one panned source,
 // near 0 for diffuse sound). Panned content moves to rho' = clip(a rho) with a

@@ -1,7 +1,7 @@
 #pragma once
 
-// Easy mode table, written by sph_easy_opt --optimise --write (PART3_LEDGER.md
-// section 4.2). Do not edit by hand: change tools/easy_opt.cpp and rerun.
+// Easy mode table, written by sph_easy_opt --optimise --write (see
+// docs/ARCHITECTURE.md, Easy mode). Do not edit by hand: change tools/easy_opt.cpp and rerun.
 // Target: ASW = Width x min (0.400, the item's reachable width), loudspeaker listener.
 // Full: J 350.22 -> 113.68 (width 106.87, rising 3.30; correlation 0.10, loudness 0.00, bass 0.00; smoothness 3.400; transients, not minimised, 978.81)
 // Low latency: J 274.79 -> 75.85 (width 73.82, rising 0.66; correlation 0.00, loudness 0.00, bass 0.00; smoothness 1.380; transients, not minimised, 115.41)

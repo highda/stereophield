@@ -1,4 +1,4 @@
-// sph_easy_opt: optimises the Easy mode table (PART3_LEDGER.md section 4.2)
+// sph_easy_opt: optimises the Easy mode table
 // and writes src/plugin/EasyTables.h. Offline; never shipped.
 //
 //   sph_easy_opt --probe                     classifier and metrics of the current table
@@ -11,7 +11,7 @@
 // Character. Every metric is then a measured function of x at each Character
 // point. An item's x under a candidate table is the class blend of
 // width(W) x gain(C), as in the plugin. Coordinate descent over the control
-// points of all three classes minimises J of section 4.2 on these functions
+// points of all three classes minimises the objective J (docs/ARCHITECTURE.md) on these functions
 // (interpolated in x); --probe verifies the result with real renders.
 
 #include "common/EasyMetrics.h"
@@ -407,8 +407,8 @@ void writeTable (const easy::Table& t, double aswMax, const juce::String& summar
     static const char* names[] = { "percussive", "tonal", "mixed" };
     juce::String s;
     s << "#pragma once\n\n"
-      << "// Easy mode table, written by sph_easy_opt --optimise --write (PART3_LEDGER.md\n"
-      << "// section 4.2). Do not edit by hand: change tools/easy_opt.cpp and rerun.\n"
+      << "// Easy mode table, written by sph_easy_opt --optimise --write (see\n"
+      << "// docs/ARCHITECTURE.md, Easy mode). Do not edit by hand: change tools/easy_opt.cpp and rerun.\n"
       << "// Target: ASW = Width x min (" << juce::String (aswMax, 3) << ", the item's reachable width), loudspeaker listener.\n";
     juce::StringArray lines;
     lines.addLines (summary);

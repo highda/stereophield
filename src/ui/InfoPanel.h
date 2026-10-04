@@ -7,8 +7,8 @@
 
 namespace sph::ui
 {
-// A guided tour (PART2_LEDGER.md L5): steps of text, each highlighting
-// controls by help key, optionally applying a demonstration state.
+// A lesson of the Learn menu: steps of text, each highlighting controls by
+// help key, optionally applying a demonstration state (LearnContent.cpp).
 struct TourStep
 {
     const char* en;
@@ -26,8 +26,8 @@ struct Tour
 
 const std::vector<Tour>& tours();
 
-// The reserved info area (L2): title, what it does, a live explanation, how
-// it works, a try-this, and a reference; or a guided tour.
+// The reserved info area: title, what it does, a live explanation, how it
+// works, a try-this, an in-depth section and references; or a lesson.
 class InfoPanel : public juce::Component, public Localisable
 {
 public:
@@ -52,6 +52,15 @@ public:
     // For tests: the text height an entry needs at the panel's width.
     static float textHeight (const juce::String& helpKey, float width);
 
+    // Long entries scroll with the mouse wheel; the offset resets for each
+    // new entry or tour step.
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void scrollBy (float points);
+    float scrollOffset() const noexcept { return scroll; }
+    float maxScroll() const;
+    // Lays out the current text and returns its height (tests).
+    float measure();
+
 private:
     juce::AttributedString compose() const;
     juce::String key, live;
@@ -59,5 +68,7 @@ private:
     juce::OwnedArray<juce::TextButton> tourButtons;
     int tour = -1, step = 0;
     bool listing = false;
+    float scroll = 0.0f, contentHeight = 0.0f;
+    juce::Rectangle<int> textArea() const;
 };
 } // namespace sph::ui

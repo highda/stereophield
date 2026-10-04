@@ -4,7 +4,7 @@
 
 namespace sph
 {
-// Stage A of DESIGN.md section 6.2.3: median-filter split of each frame's
+// Stage A: median-filter split of each frame's
 // magnitudes into tonal, transient and noise masks that sum to 1, using only
 // the current and past frames.
 class ComponentSplit

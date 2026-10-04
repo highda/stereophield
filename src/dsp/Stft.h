@@ -24,7 +24,7 @@ public:
     Stft();
     ~Stft();
 
-    // FFT size of DESIGN.md section 6.2.2 for a sample rate; the hop is N / 4.
+    // FFT size for a sample rate; the hop is N / 4.
     static int fftSizeForRate (double sampleRate) noexcept
     {
         return sampleRate <= 50000.0 ? 2048 : (sampleRate <= 100000.0 ? 4096 : 8192);

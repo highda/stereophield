@@ -1,6 +1,6 @@
 #pragma once
 
-// Measurements of DESIGN.md section 10. Each returns the measured value and
+// Measurements Each returns the measured value and
 // whether the criterion passed; Catch2 tests assert on them and sph_measure
 // writes them to docs/MEASUREMENTS.md.
 

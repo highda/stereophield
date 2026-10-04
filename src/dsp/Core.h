@@ -28,7 +28,7 @@
 namespace sph
 {
 // Two instances of a generator for seamless structural changes
-// (PART2_LEDGER.md I2): the idle one takes the new structure, is pre-rolled
+//: the idle one takes the new structure, is pre-rolled
 // on recent input and crossfades in with equal power.
 template <typename G>
 struct GenPair
@@ -42,7 +42,7 @@ struct GenPair
     bool fading() const noexcept { return fadePos < fadeLen; }
 };
 
-// The complete signal graph of DESIGN.md section 4.1, independent of the
+// The complete signal graph, independent of the
 // plugin wrapper. Real-time safe after prepare().
 class Core
 {
@@ -58,7 +58,7 @@ public:
     void setParams (const Params& p) noexcept { params = p; }
 
     // The next block applies parameters without smoothing or fades
-    // (DESIGN.md section 10.1, preset load).
+    //.
     void requestSnap() noexcept { snapRequested.store (true); }
 
     // inR may be null for a mono input. Output may alias input.
@@ -74,12 +74,12 @@ public:
     // Longest tail of any awake module plus the latency, in seconds.
     double tailSeconds() const noexcept { return tail.load (std::memory_order_relaxed); }
 
-    // Never let any module sleep (DESIGN.md section 7.6). Tests only.
+    // Never let any module sleep. Tests only.
     bool forceAwake = false;
 
     Meters meters;
-    ScopeTaps scopes;     // V1, read by the interface
-    OutputRing outputRing; // V6 and V7, read by the interface
+    ScopeTaps scopes;      // read by the interface
+    OutputRing outputRing; // read by the interface
 
     // Read-only test hooks.
     const SleepController& sleepController (GeneratorId g) const noexcept { return slots[(size_t) g].sleep; }
@@ -95,7 +95,7 @@ public:
     bool expanderActive() const noexcept { return expanderOn; }
     // Mean and maximum of the transient envelope e(n) over the last chunk.
     float lastEnvelopeMean() const noexcept { return envMean; }
-    // Auto-width (PART2_LEDGER.md R3): the measured perceived width and the
+    // Auto-width: the measured perceived width and the
     // gain applied to the width.
     float autoWidthAsw() const noexcept { return autoAsw.load (std::memory_order_relaxed); }
     float autoWidthGain() const noexcept { return (float) autoGain; }

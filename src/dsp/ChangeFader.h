@@ -5,7 +5,7 @@
 
 namespace sph
 {
-// The 20 ms fade of DESIGN.md section 5.3 for structural changes: fade the
+// The 20 ms fade for structural changes: fade the
 // output to zero, apply the change and reset, then fade back in.
 class ChangeFader
 {

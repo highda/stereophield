@@ -40,7 +40,7 @@ const std::vector<Preset>& factoryPresets()
                                { ids::velvet_amount, 40 }, { ids::velvet_source, 2 } } },
         { "Scene: Stable partials", { { ids::engine, 1 }, { ids::spread_amount, 0 }, { ids::pan_amount, 100 },
                                       { ids::pan_mode, 1 } } },
-        // Part 2 (PART2_LEDGER.md section 10).
+        // Presets 18 to 29 (2.0).
         { "Virtual pair: AB omnis 40 cm", { { ids::engine, 1 }, { ids::spread_amount, 0 }, { ids::coh_amount, 100 },
                                             { ids::coh_mode, 1 }, { ids::coh_spacing_cm, 40 } } },
         { "Virtual pair: XY cardioids", { { ids::engine, 1 }, { ids::spread_amount, 0 }, { ids::coh_amount, 100 },

@@ -10,7 +10,7 @@
 
 namespace sph
 {
-// Chorus and micro-pitch (DESIGN.md section 6.3.3). Both read Lagrange-
+// Chorus and micro-pitch. Both read Lagrange-
 // interpolated delays of u; s = (pL - pR) / 2, m = 0.5 ((pL + pR) / 2 - u).
 //
 // The chorus LFO (phase and its smoothed value) and the pitch-shifter phasors

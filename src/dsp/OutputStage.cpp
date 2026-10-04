@@ -37,7 +37,7 @@ void OutputStage::setParams (const Params& p, bool snap)
     bypassMix.setTargetValue (p.bypass ? 1.0f : 0.0f);
     if (p.listen != listen)
     {
-        // Crossfade from the mode currently heard (PART2_LEDGER.md I6).
+        // Crossfade from the mode currently heard.
         listenFrom = listenFade > 0 ? listenFrom : listen;
         listen = p.listen;
         listenFade = snap ? 0 : listenFadeLen;

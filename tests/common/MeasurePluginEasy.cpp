@@ -1,4 +1,4 @@
-// Part 3 measurements: Easy mode (PART3_LEDGER.md section 8).
+// Easy mode measurements (P3).
 
 #include "common/EasyMetrics.h"
 #include "common/Fixtures.h"
@@ -192,7 +192,7 @@ Result p3t2LinearWidth()
     }
     r.measured = "worst R^2 " + fmt (worstR2, 3) + ", lowest ASW(100 %) " + fmt (worstTop, 2) + ". " + text;
     if (! r.pass && otherFailures == 0)
-        r.note = "Fallback (docs/DECISIONS.md, Part 3): every item without drums has R^2 >= 0.95 and ASW(100 %) >= 0.35 and never "
+        r.note = "known limit (docs/TESTING.md): every item without drums has R^2 >= 0.95 and ASW(100 %) >= 0.35 and never "
                  "narrows by more than 0.01 (the metric's resolution where width saturates); the drum loop and the arrangement, kept "
                  "centred on their hits, respond to side gain too differently from the rest to be linearised by one open-loop mapping";
     return r;
@@ -212,7 +212,7 @@ Result p3t3Correlation()
     r.pass = worst >= 0.0;
     r.measured = "lowest " + fmt (worst, 2) + " (" + where + ") over " + std::to_string (corners().size()) + " renders";
     if (! r.pass && worst >= -0.1)
-        r.note = "Fallback (docs/DECISIONS.md, Part 3): single 100 ms windows on the drum loop dip below 0, where the side's tails "
+        r.note = "known limit (docs/TESTING.md): single 100 ms windows on the drum loop dip below 0, where the side's tails "
                  "outlast a hit faster than the guard's 200 ms power average follows; within the guard bound of T16 (>= -0.1)";
     return r;
 }
@@ -499,7 +499,7 @@ Result p3t11EasySnapshots()
             ed->setZoom (zoom);
             ed->setInfoVisible (true);
             ed->setLanguageForTest (language);
-            ed->hoverForTest (shot == 2 ? "ui.collapse" : "p.easy_width");
+            ed->hoverForTest (shot == 2 ? "ui.collapse" : "ui.easy");
             const Signal silence ((size_t) samples (0.5, fs), 0.0f);
             for (int part = 0; part < 8; ++part)
             {
@@ -520,7 +520,7 @@ Result p3t11EasySnapshots()
             pl.processor().setTeachingSource (0);
         }
     r.pass = written == 6;
-    r.measured = std::to_string (written) + " of 6 snapshots written; inspected, see docs/DECISIONS.md";
+    r.measured = std::to_string (written) + " of 6 snapshots written; inspected";
     return r;
 }
 } // namespace sph::measure

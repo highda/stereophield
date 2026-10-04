@@ -8,7 +8,7 @@ namespace juce::dsp { class FFT; }
 
 namespace sph
 {
-// Material classifier of PART3_LEDGER.md section 5. Summarises the input into
+// Material classifier Summarises the input into
 // three weights that sum to 1: percussive, tonal and mixed.
 //
 // A short-time spectrum (about 21 ms, hop 50 %) gives two pieces of evidence:

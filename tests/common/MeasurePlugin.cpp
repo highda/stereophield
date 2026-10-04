@@ -623,7 +623,7 @@ Result t18SmartDisableSaves()
 
 Result t19NoAllocation()
 {
-    Result r { "T19", "Allocations inside processBlock, presets 1, 14, 16 with parameter automation, every Part 2 generator awake and every scope tap enabled: count is 0", "", false, false, "" };
+    Result r { "T19", "Allocations inside processBlock, presets 1, 14, 16 with parameter automation, every generator added in 2.0 awake and every scope tap enabled: count is 0", "", false, false, "" };
     long total = 0;
     for (int preset : { 1, 14, 16 })
     {
@@ -909,7 +909,7 @@ Result t28InterfaceSnapshot()
         text += std::string (text.empty() ? "" : "; ") + shot.file + " " + std::to_string (image.getWidth()) + " x " + std::to_string (image.getHeight());
         ed->setLanguageForTest (0);
     }
-    r.measured = text + "; inspected, see docs/DECISIONS.md";
+    r.measured = text + "; inspected";
     return r;
 }
 
@@ -949,7 +949,7 @@ Result p2t11ViewSnapshots()
             ed->setLanguageForTest (0);
         }
     r.pass = written == 10;
-    r.measured = std::to_string (written) + " of 10 snapshots written; inspected, see docs/DECISIONS.md";
+    r.measured = std::to_string (written) + " of 10 snapshots written; inspected";
     return r;
 }
 } // namespace sph::measure
@@ -1010,7 +1010,7 @@ std::string presetMetricsMarkdown()
 {
     std::string md = "# Preset metrics\n\nWritten by `sph_measure --metrics`. Each factory preset on 6 s of `mix` "
                      "(mono input, 48 kHz), measured after 1 s. These are objective companions to listening, not "
-                     "pass criteria (PART2_LEDGER.md, I12).\n\n"
+                     "pass criteria.\n\n"
                      "- **Correlation**: broadband L/R correlation.\n"
                      "- **ASW**: apparent source width from the virtual listener (0 = point source, 1 = fully diffuse).\n"
                      "- **Mono fold**: worst third-octave deviation of (L + R) / 2 from the input; 0 dB is mono-safe.\n"
@@ -1202,9 +1202,9 @@ Result p2t15CoherenceTarget()
     }
     r.pass = worstAll <= 0.05;
     r.measured = "worst band error: " + text;
-    // Fallback (DECISIONS.md, phase 2.3): best result kept; guard against regression.
+    // Known limit (docs/TESTING.md): guard against regression.
     if (! r.pass && worstNoise <= 0.16 && worstMix <= 0.8)
-        r.note = "fallback: best found, noise <= 0.16, mix <= 0.8";
+        r.note = "known limit (docs/TESTING.md): noise <= 0.16, mix <= 0.8";
     return r;
 }
 
@@ -1237,7 +1237,7 @@ Result p2t16PhysicalCurves()
     r.pass = spaced <= 0.08 && coincident <= 0.05;
     r.measured = "spaced pair worst error " + fmt (spaced, 3) + "; XY cardioid worst error " + fmt (coincident, 3);
     if (! r.pass && spaced <= 0.16 && coincident <= 0.07)
-        r.note = "fallback: best found, spaced <= 0.16, XY <= 0.07";
+        r.note = "known limit (docs/TESTING.md): spaced <= 0.16, XY <= 0.07";
     return r;
 }
 
@@ -1374,7 +1374,7 @@ namespace sph::measure
 {
 Result p2t26SeamlessChanges()
 {
-    Result r { "P2-T26", "Structural changes (every Part 1 generator choice, double-tracker seed, listen) and a Velvet size sweep: RMS of every 10 ms window within 1.5 dB of the range spanned by time-aligned renders with the old and the new setting (side for generators, output for listen)", "", true, true, "" };
+    Result r { "P2-T26", "Structural changes (every choice of the original generators, double-tracker seed, listen) and a Velvet size sweep: RMS of every 10 ms window within 1.5 dB of the range spanned by time-aligned renders with the old and the new setting (side for generators, output for listen)", "", true, true, "" };
     struct Scenario
     {
         const char* name;
@@ -1516,10 +1516,10 @@ Result p2t29SoftOwnership()
     r.pass = false;
     r.measured = "Soft: " + t13.measured.substr (t13.measured.find ("L-R")) + (t14.pass ? ", T14 passes" : ", T14 fails")
                  + "; Hard: " + hard.measured.substr (hard.measured.find ("L-R"));
-    // Fallback (DECISIONS.md, phase 2.5): blending shared bins cannot beat
+    // Known limit (docs/TESTING.md): blending shared bins cannot beat
     // hard ownership here; Hard is the default and Soft an option.
     if (t14.pass && hard.pass)
-        r.note = "fallback: Hard ownership is the default";
+        r.note = "known limit (docs/TESTING.md): Hard ownership is the default";
     return r;
 }
 } // namespace sph::measure
@@ -1901,10 +1901,10 @@ Result r3AutoWidth()
     }
     r.pass = go;
     r.measured = text;
-    // Research item: a no-go is documented in docs/RESEARCH.md and the
+    // Research item: a no-go is documented in docs/TESTING.md and the
     // feature ships off by default, labelled experimental.
     if (! go)
-        r.note = "no-go on percussive material, shipped as experimental (docs/RESEARCH.md)";
+        r.note = "known limit (docs/TESTING.md): no-go on percussive material, shipped as experimental";
     return r;
 }
 } // namespace sph::measure

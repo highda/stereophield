@@ -1,6 +1,6 @@
 #pragma once
 
-// Easy mode corpus (PART3_LEDGER.md section 4.2): the generated signals and
+// Easy mode corpus: the generated signals and
 // two longer synthesised programmes. Mono, deterministic, no recordings.
 
 #include "dsp/Rng.h"

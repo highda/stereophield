@@ -4,7 +4,7 @@
 
 namespace sph
 {
-// Stage B of DESIGN.md section 6.2.4: energy that is decaying is moved from
+// Stage B: energy that is decaying is moved from
 // the tonal mask to the noise mask.
 class AmbienceSplit
 {

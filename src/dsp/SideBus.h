@@ -13,7 +13,7 @@ namespace sph
 {
 struct Params;
 
-// Side bus of DESIGN.md section 6.4, and the mid of section 6.5:
+// Side bus, and the output mid:
 //   S_bus: bass-mono high-pass -> three width bands -> transient duck
 //          -> width -> correlation guard -> S_syn
 //   D_bus: the same high-pass (and the band split at unity, when it is in

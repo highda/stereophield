@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package macOS
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            ./scripts/package-macos.sh "${GITHUB_REF_NAME#v}"
+          else
+            ./scripts/package-macos.sh
+          fi
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stereophield-macos
+          path: build/dist/*
+
+  github-release:
+    needs: [macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
+          body: |
+            stereophield for macOS on Apple Silicon (arm64), macOS 12 or later: an Audio Unit and a Standalone app.
+
+            **Install:** open `stereophield-<version>-macOS.pkg` (the AU goes to `/Library/Audio/Plug-Ins/Components`, the app to `/Applications`), or unzip the AU into `~/Library/Audio/Plug-Ins/Components`.
+
+            The build is not signed or notarised. If macOS blocks it, right-click the package and choose Open, or run:
+            `xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/Components/stereophield.component /Applications/stereophield.app`
+
+            Checksums are in the SHA256 file.

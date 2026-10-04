@@ -9,7 +9,7 @@
 
 namespace sph
 {
-// Velvet-noise decorrelator (DESIGN.md section 6.3.4).
+// Velvet-noise decorrelator.
 //   s = (vL - vR) / 2,  m = (vL + vR) / 2 - u.
 class Velvet
 {
@@ -36,7 +36,7 @@ public:
     // Builds one sequence; allocation-free, so it may run on the audio thread.
     static void build (Sequence& seq, double sampleRate, float sizeMs, float density, uint32_t seed) noexcept;
 
-    // Optimised sequence (PART2_LEDGER.md I1) for a variation and side: the
+    // Optimised sequence for a variation and side: the
     // table class nearest the specified impulse count, scaled to the length.
     static void buildOptimised (Sequence& seq, double sampleRate, float sizeMs, float density, int variation, int side) noexcept;
 

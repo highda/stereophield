@@ -94,7 +94,7 @@ void Mod::copyPhaseFrom (const Mod& o) noexcept
 void Mod::advanceWhileAsleep (int numSamples) noexcept
 {
     // The LFO and its one-pole run per sample so the smoothed value stays
-    // current (DESIGN.md section 10.4, T17).
+    // current.
     int done = 0;
     while (done < numSamples)
     {

@@ -12,7 +12,7 @@
 
 namespace sph
 {
-// Humanised artificial double tracking (PART2_LEDGER.md G7). Two synthetic
+// Humanised artificial double tracking. Two synthetic
 // takes A (left) and B (right) read the bus at slowly and independently
 // drifting delays, with a faster random "wow" for pitch, a level drift and a
 // tone difference. s = (A - B) / 2, m = (A + B) / 2 - u.

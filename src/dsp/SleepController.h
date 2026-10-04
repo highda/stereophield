@@ -6,7 +6,7 @@
 
 namespace sph
 {
-// Smart disable for one module (DESIGN.md section 7). update() is called once
+// Smart disable for one module. update() is called once
 // per block, before the module would run, with that block's input peak.
 class SleepController
 {

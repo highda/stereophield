@@ -16,11 +16,11 @@ class StereophieldProcessor;
 
 namespace sph::ui
 {
-// Draws min/max columns of one scope tap over a time span (V1, V4).
+// Draws min/max columns of one scope tap over a time span.
 void drawTap (juce::Graphics& g, juce::Rectangle<float> r, const ScopeTaps& taps, int tap, double seconds,
               int64_t endColumn, juce::Colour colour, bool unipolar = false);
 
-// Mini waveform of a generator's side, under its card (V4).
+// Mini waveform of a generator's side, under its card.
 class MiniScope : public juce::Component
 {
 public:
@@ -34,7 +34,7 @@ private:
 };
 
 // The frequency-domain meters' feed: pops the output ring and runs the
-// per-band correlation, mono-fold and virtual-listener analyses (V6, V7).
+// per-band correlation, mono-fold and virtual-listener analyses.
 class OutputAnalysis
 {
 public:
@@ -55,7 +55,7 @@ private:
     int fill = 0, sinceBands = 0, sinceListener = 0;
 };
 
-// Stacked scope lanes with a picker per lane, a shared span and freeze (V3, V5).
+// Stacked scope lanes with a picker per lane, a shared span and freeze.
 class ScopeLanes : public juce::Component, public Localisable
 {
 public:
@@ -78,7 +78,7 @@ private:
     int64_t end = 0;
 };
 
-// The whole plugin as a live signal-flow diagram (V2).
+// The whole plugin as a live signal-flow diagram.
 class FlowView : public juce::Component, public Localisable
 {
 public:
@@ -103,7 +103,7 @@ private:
     juce::String hoverHelp;
 };
 
-// Per-band correlation and mono-fold deviation (V6).
+// Per-band correlation and mono-fold deviation.
 class BandsView : public juce::Component
 {
 public:
@@ -114,7 +114,7 @@ private:
     const OutputAnalysis& analysis;
 };
 
-// Target and achieved coherence per band, with draggable curve points (G6).
+// Target and achieved coherence per band, with draggable curve points.
 class CoherenceView : public juce::Component
 {
 public:
@@ -138,7 +138,7 @@ private:
     std::array<float, 5> values {};
 };
 
-// Perceived-width bar with Speakers / Headphones (V7).
+// Perceived-width bar with Speakers / Headphones.
 class AswMeter : public juce::Component, public Localisable
 {
 public:

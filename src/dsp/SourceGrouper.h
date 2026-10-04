@@ -6,7 +6,7 @@
 
 namespace sph
 {
-// Stage D of DESIGN.md section 6.2.6: groups partials that share a harmonic
+// Stage D: groups partials that share a harmonic
 // series and an onset, and gives each group one pan position.
 class SourceGrouper
 {

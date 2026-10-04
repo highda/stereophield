@@ -10,7 +10,7 @@
 
 namespace sph
 {
-// Haas delay (DESIGN.md section 6.3.2):
+// Haas delay:
 //   d = lowpass(delay(u)), s = q (u - d) / 2, m = (d - u) / 2.
 class HaasDelay
 {

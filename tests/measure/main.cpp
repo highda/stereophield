@@ -1,4 +1,4 @@
-// sph_measure: runs every measurement of DESIGN.md section 10, rewrites
+// sph_measure: runs every measurement, rewrites
 // docs/MEASUREMENTS.md and renders each factory preset on the mix signal.
 //
 //   sph_measure --all --out docs/MEASUREMENTS.md --renders build/renders
@@ -160,7 +160,40 @@ juce::Image bandsImage (const signals::Signal& l, const signals::Signal& r, cons
 
 juce::String html (const juce::String& s) { return s.replace ("&", "&amp;").replace ("<", "&lt;").replace (">", "&gt;"); }
 
-// The listening report of PART2_LEDGER.md I13.
+// docs/PARAMETERS.md: every parameter as the host sees it, by group.
+juce::String parametersMarkdown()
+{
+    test::Plugin pl;
+    juce::String md;
+    md << "# Parameters\n\n"
+       << "Written by `sph_measure --parameters`. IDs are what hosts store in sessions and automation; the version is the "
+          "release that added the parameter (sessions from older versions get that version's behaviour). In Easy mode the "
+          "macros set every engine parameter, so host automation of engine parameters has no effect there.\n";
+    for (auto* group : pl.processor().getParameterTree().getSubgroups (false))
+    {
+        md << "\n## " << group->getName() << "\n\n| ID | Name | Range | Default | Automatable | Since |\n| --- | --- | --- | --- | --- | --- |\n";
+        for (auto* p : group->getParameters (false))
+        {
+            auto* r = dynamic_cast<juce::RangedAudioParameter*> (p);
+            if (r == nullptr)
+                continue;
+            juce::String range;
+            if (auto* c = dynamic_cast<juce::AudioParameterChoice*> (r))
+                range = c->choices.joinIntoString (", ");
+            else if (dynamic_cast<juce::AudioParameterBool*> (r) != nullptr)
+                range = "Off, On";
+            else
+                range = r->getText (0.0f, 0) + " to " + r->getText (1.0f, 0);
+            const auto def = r->getText (r->getDefaultValue(), 0);
+            const int v = r->getVersionHint();
+            md << "| `" << r->getParameterID() << "` | " << r->getName (64) << " | " << range << " | " << def << " | "
+               << (r->isAutomatable() ? "yes" : "no") << " | " << (v == 1 ? "1.0" : v == 2 ? "2.0" : "3.0") << " |\n";
+        }
+    }
+    return md;
+}
+
+// The listening report: an HTML page with players and metrics per preset.
 void writeReport (const juce::File& dir)
 {
     dir.createDirectory();
@@ -202,7 +235,7 @@ void writeReport (const juce::File& dir)
              << "<tr><td>Loudness</td><td>" << measure::fmt (m.lufsChange, 1) << " LU</td></tr></table></div></section>\n";
         std::printf ("report %s\n", name.toRawUTF8());
     }
-    // Blind pairs: each Part 2 preset against the nearest Part 1 preset.
+    // Blind pairs: each preset added in 2.0 against the nearest 1.0 preset.
     const int pairs[][2] = { { 18, 12 }, { 19, 5 }, { 20, 13 }, { 21, 1 }, { 22, 6 }, { 23, 11 }, { 24, 10 }, { 25, 12 }, { 26, 13 }, { 28, 16 }, { 29, 15 } };
     juce::String pairJs = "[";
     for (const auto& p : pairs)
@@ -219,8 +252,8 @@ h1{font-size:22px}h2{font-size:16px;margin:0 0 6px}.preset,.blind{background:var
 table td{padding:2px 10px 2px 0}table td:last-child{color:var(--accent)}button{background:#262a31;color:var(--text);border:1px solid #2c3038;border-radius:4px;padding:5px 12px;cursor:pointer}
 button.on{background:var(--accent);color:var(--bg)}textarea{width:100%;height:120px;background:var(--bg);color:var(--text);border:1px solid #2c3038}
 </style></head><body><h1>stereophield listening report</h1>
-<p>Every factory preset on 6 s of the <code>mix</code> test signal (mono input, 48 kHz). Play the dry input, the processed stereo and the mono fold; the numbers are the objective measures of PART2_LEDGER.md I12. Use headphones and loudspeakers.</p>
-<section class="blind"><h2>Blind A/B</h2><p class="desc">Each new preset against the closest preset of 1.0, under hidden labels. Listen to A and B, choose, note any artefacts, then reveal. Results stay in this browser and can be exported for docs/LISTENING.md.</p>
+<p>Every factory preset on 6 s of the <code>mix</code> test signal (mono input, 48 kHz). Play the dry input, the processed stereo and the mono fold; the numbers are objective measures (correlation, perceived width, mono fold, loudness). Use headphones and loudspeakers.</p>
+<section class="blind"><h2>Blind A/B</h2><p class="desc">Each new preset against the closest preset of 1.0, under hidden labels. Listen to A and B, choose, note any artefacts, then reveal. Results stay in this browser and can be exported as a Markdown table.</p>
 <div id="blind"></div><p><button onclick="exportResults()">Export results</button></p><textarea id="out" readonly></textarea></section>
 )HTML" << rows << R"HTML(<script>
 const pairs=)HTML" << pairJs << R"HTML(;const pad=n=>String(n).padStart(2,'0');
@@ -271,6 +304,11 @@ int main (int argc, char** argv)
             juce::File::getCurrentWorkingDirectory().getChildFile ("docs/PRESET_METRICS.md").replaceWithText (measure::presetMetricsMarkdown());
             return 0;
         }
+        else if (a == "--parameters")
+        {
+            juce::File::getCurrentWorkingDirectory().getChildFile ("docs/PARAMETERS.md").replaceWithText (parametersMarkdown());
+            return 0;
+        }
         else if (a == "--make-fixtures" && i + 1 < argc)
         {
             makeFixtures (juce::File::getCurrentWorkingDirectory().getChildFile (argv[++i]));
@@ -289,7 +327,7 @@ int main (int argc, char** argv)
         auto r = e.fn();
         const auto ms = juce::Time::getMillisecondCounterHiRes() - t0;
         std::printf ("%-4s %-8s %s  (%.1f s)\n", r.id.c_str(),
-                     r.pass ? "pass" : (r.tunable && ! r.note.empty() ? "fallback" : "FAIL"),
+                     r.pass ? "pass" : (r.tunable && ! r.note.empty() ? "limit" : "FAIL"),
                      r.measured.c_str(), ms / 1000.0);
         std::fflush (stdout);
         results.push_back (r);
@@ -304,7 +342,7 @@ int main (int argc, char** argv)
            << "| Test | Criterion | Measured | Result |\n| --- | --- | --- | --- |\n";
         for (const auto& r : results)
         {
-            juce::String verdict = r.pass ? "pass" : (r.tunable && ! r.note.empty() ? "fallback" : "**fail**");
+            juce::String verdict = r.pass ? "pass" : (r.tunable && ! r.note.empty() ? "known limit" : "**fail**");
             if (! r.note.empty())
                 verdict << " (" << escape (r.note) << ")";
             md << "| " << r.id << " | " << escape (r.criterion) << " | " << escape (r.measured) << " | " << verdict << " |\n";

@@ -11,7 +11,7 @@
 
 namespace sph
 {
-// Adaptive spectral panning (DESIGN.md section 6.3.5). Works on frames of the
+// Adaptive spectral panning. Works on frames of the
 // Full analysis and writes the side spectrum S(t, k).
 class PanMap
 {

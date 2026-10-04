@@ -9,7 +9,7 @@
 
 namespace sph
 {
-// Output meters of DESIGN.md section 6.5. The audio thread writes atomics and a
+// Output meters The audio thread writes atomics and a
 // single-producer single-consumer FIFO; the user interface reads them.
 class Meters
 {

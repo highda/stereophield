@@ -13,7 +13,7 @@
 
 namespace sph
 {
-// Full-engine analysis (DESIGN.md section 6.2): STFT, component split and
+// Full-engine analysis: STFT, component split and
 // ambience split, producing the TONAL and NOISE buses (and, for tests, the
 // transient bus), each delayed by N samples.
 class Analysis
@@ -22,7 +22,7 @@ public:
     enum Channel { chTonal = 0, chNoise, chPan, chTransient, chCoherence, numChannels };
 
     // Which outputs this block must produce. When `stages` is false only the
-    // input FIFO and hop counter run (DESIGN.md section 7.5).
+    // input FIFO and hop counter run.
     struct Needs
     {
         bool stages = true;
@@ -35,7 +35,7 @@ public:
         bool flux = false;
     };
 
-    // Onsets found by the spectral-flux detector (PART2_LEDGER.md I4) during
+    // Onsets found by the spectral-flux detector during
     // the last process() call: sample index within that call, and strength.
     struct Onset
     {

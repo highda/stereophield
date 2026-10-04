@@ -6,7 +6,7 @@
 
 namespace sph
 {
-// Parameter layout of DESIGN.md section 8 and the per-block snapshot of it.
+// Parameter layout and the per-block snapshot of it.
 namespace ids
 {
 #define SPH_PARAM_IDS(X) \
@@ -45,7 +45,7 @@ inline constexpr int numParameters = (int) (sizeof (ids::all) / sizeof (ids::all
 inline constexpr int numParametersV1 = 50;
 
 // Parameters the engine reads (Params); after them come the Easy mode
-// parameters of PART3_LEDGER.md section 7, which only the mapping reads.
+// parameters, which only the mapping reads.
 inline constexpr int numCoreParameters = 88;
 inline constexpr int numParametersV2 = 87;
 

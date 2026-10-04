@@ -13,7 +13,7 @@ class PanMap;
 
 namespace sph::ui
 {
-// Goniometer (DESIGN.md section 9.3): (L, R) pairs plotted at
+// Goniometer: (L, R) pairs plotted at
 // x = (R - L) / sqrt 2, y = (L + R) / sqrt 2 as dots that fade over 150 ms.
 class Goniometer : public juce::Component
 {

@@ -213,7 +213,7 @@ Result p2t25OptimisedVelvet()
     }
     r.pass = worstBand <= 1.5 && worstCorr <= 0.08;
     if (! r.pass && worstBand <= 2.0 && worstCorr <= 0.08)
-        r.note = "fallback: best found, third-octave <= 2.0 dB";
+        r.note = "known limit (docs/TESTING.md): third-octave <= 2.0 dB";
     r.measured = "worst over 16 variations: third-octave " + fmt (worstBand, 2) + " dB, |corr| " + fmt (worstCorr, 3)
                  + " (Random design: " + fmt (randomBand, 2) + " dB, " + fmt (randomCorr, 3) + ")";
     return r;

@@ -823,7 +823,7 @@ void Core::processChunk (const float* inL, const float* inR, float* outL, float*
     if (outputRing.enabled())
         outputRing.push (outL, outR, mD.data(), n);
 
-    // Host tail (DESIGN.md section 7.5).
+    // Host tail.
     // A spectral bus outlasts its input by a further N samples.
     int longest = 0;
     auto tailOf = [&] (GeneratorId g, Source src, int t)
