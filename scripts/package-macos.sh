@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the release artefacts: an installer package (Audio Unit and
-# Standalone app) and zip files of each, in build/dist.
+# Builds the release artefacts in build/dist: the Audio Unit as a zip file and
+# its SHA-256 checksum (read by scripts/install-au.sh).
 #
 #   ./scripts/package-macos.sh [version]      version defaults to the CMake project version
 set -euo pipefail
@@ -13,27 +13,17 @@ if [[ "$VERSION" != "$CMAKE_VERSION" ]]; then
   exit 1
 fi
 
-ARTEFACTS="$REPO_ROOT/build/stereophield_artefacts/Release"
-PACKAGE_DIR="$REPO_ROOT/build/package"
-ROOT_DIR="$PACKAGE_DIR/root"
+COMPONENT="$REPO_ROOT/build/stereophield_artefacts/Release/AU/stereophield.component"
 OUTPUT_DIR="$REPO_ROOT/build/dist"
 
 "$REPO_ROOT/scripts/build.sh" --plugin
 
-rm -rf "$PACKAGE_DIR" "$OUTPUT_DIR"
-mkdir -p "$ROOT_DIR/Library/Audio/Plug-Ins/Components" "$ROOT_DIR/Applications" "$OUTPUT_DIR"
-cp -R "$ARTEFACTS/AU/stereophield.component" "$ROOT_DIR/Library/Audio/Plug-Ins/Components/"
-cp -R "$ARTEFACTS/Standalone/stereophield.app" "$ROOT_DIR/Applications/"
+# The linker signs the component ad hoc; hosts load it without a quarantine flag.
+codesign --verify --deep --strict "$COMPONENT"
 
-pkgbuild \
-  --root "$ROOT_DIR" \
-  --identifier "com.highda.stereophield" \
-  --version "$VERSION" \
-  --install-location "/" \
-  "$OUTPUT_DIR/stereophield-${VERSION}-macOS.pkg"
-
-ditto -c -k --keepParent "$ARTEFACTS/AU/stereophield.component" "$OUTPUT_DIR/stereophield-${VERSION}-AU.zip"
-ditto -c -k --keepParent "$ARTEFACTS/Standalone/stereophield.app" "$OUTPUT_DIR/stereophield-${VERSION}-Standalone.zip"
+rm -rf "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR"
+ditto -c -k --keepParent "$COMPONENT" "$OUTPUT_DIR/stereophield-${VERSION}-AU.zip"
 
 ( cd "$OUTPUT_DIR" && shasum -a 256 ./* > "stereophield-${VERSION}-SHA256.txt" )
 echo "Release artefacts in $OUTPUT_DIR:"

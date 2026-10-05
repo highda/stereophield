@@ -41,11 +41,18 @@ jobs:
         with:
           files: release-artifacts/*
           body: |
-            stereophield for macOS on Apple Silicon (arm64), macOS 12 or later: an Audio Unit and a Standalone app.
+            stereophield Audio Unit for macOS on Apple Silicon (arm64), macOS 12 or later.
 
-            **Install:** open `stereophield-<version>-macOS.pkg` (the AU goes to `/Library/Audio/Plug-Ins/Components`, the app to `/Applications`), or unzip the AU into `~/Library/Audio/Plug-Ins/Components`.
+            **Install** (no Gatekeeper prompt; checks the SHA-256 before installing):
 
-            The build is not signed or notarised. If macOS blocks it, right-click the package and choose Open, or run:
-            `xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/Components/stereophield.component /Applications/stereophield.app`
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/highda/stereophield/main/scripts/install-au.sh | bash
+            ```
 
-            Checksums are in the SHA256 file.
+            Or unzip `stereophield-<version>-AU.zip` into `~/Library/Audio/Plug-Ins/Components` and remove the quarantine flag that the browser adds:
+
+            ```bash
+            xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/stereophield.component
+            ```
+
+            The plugin is signed ad hoc, not with a Developer ID. Checksums are in the SHA256 file.

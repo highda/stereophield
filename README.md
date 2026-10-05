@@ -12,16 +12,21 @@ It uses classical signal processing and psychoacoustic models only, with no mach
 
 ## Install
 
-Download the latest release from [Releases](https://github.com/highda/stereophield/releases):
-
-- `stereophield-<version>-macOS.pkg` installs the Audio Unit to `/Library/Audio/Plug-Ins/Components` and the Standalone app to `/Applications`.
-- `stereophield-<version>-AU.zip` and `-Standalone.zip` contain the same, to copy by hand (for example the AU into `~/Library/Audio/Plug-Ins/Components`).
-
-Requires macOS 12 or later on Apple Silicon. The builds are not signed or notarised: if macOS blocks the package, right-click it and choose Open, or remove the quarantine flag:
+The Audio Unit, for macOS 12 or later on Apple Silicon. In Terminal:
 
 ```bash
-xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/Components/stereophield.component /Applications/stereophield.app
+curl -fsSL https://raw.githubusercontent.com/highda/stereophield/main/scripts/install-au.sh | bash
 ```
+
+The script downloads the latest release from [Releases](https://github.com/highda/stereophield/releases), checks its SHA-256 checksum and code signature, and installs it to `~/Library/Audio/Plug-Ins/Components`. Files fetched this way carry no quarantine flag, so neither macOS nor your host asks about the plugin. Restart the host or rescan plug-ins afterwards. To install a specific version, add it: `... | bash -s -- 3.1.0`.
+
+To install by hand instead, download `stereophield-<version>-AU.zip`, unzip it into `~/Library/Audio/Plug-Ins/Components`, and remove the quarantine flag that the browser adds (the plugin is signed ad hoc, not with an Apple Developer ID):
+
+```bash
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/stereophield.component
+```
+
+The Standalone app is built from source (see below).
 
 ## Easy mode
 
@@ -77,7 +82,7 @@ cd stereophield
 
 The build installs the Audio Unit to `~/Library/Audio/Plug-Ins/Components/stereophield.component`; the Standalone app is `build/stereophield_artefacts/Release/Standalone/stereophield.app`. JUCE 9.0.3 and Catch2 3.16.0 are fetched by CMake on the first configure. Other options: `--validate` (runs `auval -v aufx Stph Hgda`), `--clean`, `--plugin` (only the AU and the app).
 
-Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a `v*` tag is pushed: `scripts/package-macos.sh` builds the package and the zip files, and the workflow attaches them to a GitHub release.
+Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a `v*` tag is pushed: `scripts/package-macos.sh` builds the Audio Unit zip and its checksum, and the workflow attaches them to a GitHub release.
 
 ## Documentation
 
@@ -103,7 +108,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a `v
 
 stereophield je didaktický plugin Audio Unit a samostatná aplikace pro macOS na Apple Silicon, která z mono signálu dělá stereo: nástroj k učení, jak stereo šíře funguje, i rozšiřovač pro běžnou práci v mixu. Všechny algoritmy přidávají jen do boční složky (side) a střed (mid) se pouze zpožďuje, nikdy nefiltruje, takže se výstup v mono sečte přesně na nedotčený vstup. Platí to ve výchozím nastavení a vždy ve snadném režimu; přestává to platit jen s příměsí středu (Mid blend, kterou používá pět továrních presetů napodobujících původní, ne mono-kompatibilní zvuk klasických efektů; rozhraní je označí „není mono-kompatibilní“) a s kompenzací Stálá hlasitost, která zachová spektrum mono součtu, ale ne jeho úroveň. Rozhraní je v češtině a angličtině (přepínač EN | CZ v záhlaví). Plugin používá jen klasické zpracování signálu a psychoakustické modely, žádné strojové učení; křivky snadného režimu a sekvence velvet noise byly vyladěny předem numerickou optimalizací podle měření.
 
-**Instalace.** Stáhněte si poslední verzi z [Releases](https://github.com/highda/stereophield/releases): balíček `.pkg` nainstaluje plugin do `/Library/Audio/Plug-Ins/Components` a aplikaci do `/Applications`. Sestavení nejsou podepsaná; pokud je macOS zablokuje, otevřete balíček pravým tlačítkem a zvolte Otevřít, nebo odstraňte příznak karantény příkazem `xattr` uvedeným výše.
+**Instalace.** V Terminálu spusťte `curl -fsSL https://raw.githubusercontent.com/highda/stereophield/main/scripts/install-au.sh | bash`. Skript stáhne poslední vydání, ověří kontrolní součet a podpis a nainstaluje plugin do `~/Library/Audio/Plug-Ins/Components`; soubory stažené takto nemají příznak karantény, takže se macOS ani hostitel na nic neptá. Při ruční instalaci ze zipu odstraňte příznak karantény příkazem `xattr` uvedeným výše (plugin je podepsaný ad hoc, ne certifikátem Apple Developer ID). Samostatnou aplikaci si sestavíte ze zdrojů.
 
 **Snadný režim.** Plugin se otevře se čtyřmi makry: **Šíře** a k jejímu dotvarování **Charakter** (čistá, rozptýlená nebo živá šíře), **Prostor** (časné odrazy a širší virtuální mikrofonní pár) a **Fokus** (basy, údery a spodní pásmo zůstávají uprostřed); dále **Přizpůsobit materiálu** a **Nízká latence**. Každé makro posouvá několik vnitřních parametrů po křivkách nalezených měřením: vnímaná šíře roste s knoflíkem rovnoměrně a každé nastavení zůstává mono-kompatibilní, s kladnou korelací, nanejvýš o 1,5 LU hlasitější a s basy uprostřed. Panel Pod kapotou ukazuje vnitřní hodnoty živě. Tlačítko **Všechny prvky** otevře úplné rozhraní se stejnými hodnotami a stejným zvukem; návrat do snadného režimu se nejprve zeptá.
 
